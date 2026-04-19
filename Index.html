@@ -126,7 +126,9 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:#f5f0e8;color:#
 
 /* ── STATS ── */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1rem}
-.stat{background:#fff;border:1px solid var(--border);border-radius:10px;padding:.8rem;text-align:center}
+.stat{background:#fff;border:2px solid var(--border);border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;transition:all .18s}
+.stat:hover{border-color:var(--gold);transform:translateY(-1px)}
+.stat.active-filter{border-color:var(--navy);background:rgba(13,27,62,.05)}
 .stat-n{font-size:1.5rem;font-weight:700;color:var(--navy);font-family:'Cormorant Garamond',serif;line-height:1}
 .stat-l{font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
 
@@ -391,6 +393,14 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
       <!-- DASHBOARD -->
       <div id="admin-dash" style="display:none">
         <div style="text-align:right;margin-bottom:.4rem;font-size:.7rem;color:var(--muted)"><span class="sync-dot"></span>Live sync — all iPads see the same data</div>
+        <!-- Persistent search bar — never re-rendered so typing works correctly -->
+        <div style="display:flex;gap:.5rem;margin-bottom:.85rem;flex-wrap:wrap">
+          <input id="admin-search" placeholder="🔍  Search name, email, batch, ID…"
+            oninput="renderAdminRegs()"
+            style="flex:1;min-width:150px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:.85rem;outline:none;background:#fff;-webkit-appearance:none"/>
+          <button id="admin-clear-btn" onclick="clearAdminSearch()" style="display:none;background:var(--cream2);border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;cursor:pointer;font-size:.82rem;color:var(--muted);font-family:'Outfit',sans-serif">✕ Clear</button>
+        </div>
+        <!-- Tappable stat cards — double as quick filters -->
         <div class="stats" id="admin-stats"></div>
         <div class="itabs">
           <button class="itab on" onclick="adminTab('regs',this)">📋 Registrations</button>
@@ -784,30 +794,79 @@ function adminTab(name, btn) {
   document.querySelectorAll('#admin-dash .itab').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
 }
+// Track active filter separately from the dropdown (which no longer exists)
+let adminActiveFilter = 'all';
+
+function setAdminFilter(f) {
+  adminActiveFilter = f;
+  renderAdminRegs();
+  renderAdminStats(); // re-render to update active highlight
+}
+
+function clearAdminSearch() {
+  const inp = document.getElementById('admin-search');
+  if(inp) { inp.value = ''; inp.focus(); }
+  const btn = document.getElementById('admin-clear-btn');
+  if(btn) btn.style.display = 'none';
+  renderAdminRegs();
+}
+
 function renderAdminStats() {
-  const total=adminRegs.length, paid=adminRegs.filter(r=>r.status==='paid').length;
+  const total=adminRegs.length;
+  const paid=adminRegs.filter(r=>r.status==='paid').length;
   const pend=adminRegs.filter(r=>r.status==='pending').length;
-  const ck=adminRegs.filter(r=>r.checkedIn).length, vt=adminRegs.filter(r=>r.voted).length;
-  document.getElementById('admin-stats').innerHTML=[
-    ['Total',total],['Confirmed',paid,'var(--green)'],['Pending',pend,'#92400e'],
-    ['Checked In',ck],['Voted',vt,'#5b21b6'],['Rejected',adminRegs.filter(r=>r.status==='rejected').length]
-  ].map(([l,n,c])=>`<div class="stat"><div class="stat-n"${c?` style="color:${c}"`:''}>${n}</div><div class="stat-l">${l}</div></div>`).join('');
+  const ck=adminRegs.filter(r=>r.checkedIn).length;
+  const vt=adminRegs.filter(r=>r.voted).length;
+  const rej=adminRegs.filter(r=>r.status==='rejected').length;
+  const f = adminActiveFilter;
+  const items = [
+    {l:'All',n:total,      k:'all',     c:'var(--navy)'},
+    {l:'Confirmed',n:paid,  k:'paid',    c:'var(--green)'},
+    {l:'Pending',n:pend,    k:'pending', c:'#92400e'},
+    {l:'Checked In',n:ck,   k:'checkin', c:'#1e40af'},
+    {l:'Voted',n:vt,        k:'voted',   c:'#5b21b6'},
+    {l:'Rejected',n:rej,    k:'rejected',c:'var(--red)'},
+  ];
+  document.getElementById('admin-stats').innerHTML = items.map(({l,n,k,c})=>
+    `<div class="stat${f===k?' active-filter':''}" onclick="setAdminFilter('${k}')" title="Filter by ${l}">
+      <div class="stat-n" style="color:${c}">${n}</div>
+      <div class="stat-l">${l}</div>
+      ${f===k?'<div style="font-size:.58rem;color:var(--navy);margin-top:3px;font-weight:700">● active</div>':''}
+    </div>`
+  ).join('');
 }
 function renderAdminRegs() {
-  const search=document.getElementById('admin-search')?document.getElementById('admin-search').value.toLowerCase():'';
-  const filter=document.getElementById('admin-filter')?document.getElementById('admin-filter').value:'all';
-  const filtered=adminRegs.filter(r=>{
-    const m=`${r.firstName} ${r.lastName} ${r.email} ${r.id} ${r.batch}`.toLowerCase().includes(search);
-    return m&&(filter==='all'||r.status===filter);
+  // Read from the persistent search input (not re-created on every render)
+  const searchEl = document.getElementById('admin-search');
+  const search = searchEl ? searchEl.value.toLowerCase().trim() : '';
+  const f = adminActiveFilter;
+  
+  // Show/hide clear button
+  const clearBtn = document.getElementById('admin-clear-btn');
+  if(clearBtn) clearBtn.style.display = search ? 'block' : 'none';
+
+  const filtered = adminRegs.filter(r => {
+    const text = `${r.firstName} ${r.lastName} ${r.email} ${r.id} ${r.batch} ${r.phone}`.toLowerCase();
+    const matchSearch = !search || text.includes(search);
+    const matchFilter = f === 'all'
+      || (f === 'paid'     && r.status === 'paid')
+      || (f === 'pending'  && r.status === 'pending')
+      || (f === 'rejected' && r.status === 'rejected')
+      || (f === 'checkin'  && r.checkedIn)
+      || (f === 'voted'    && r.voted);
+    return matchSearch && matchFilter;
   });
-  const el=document.getElementById('admin-regs');
-  el.innerHTML=`
-    <div style="display:flex;gap:.5rem;margin-bottom:.85rem;flex-wrap:wrap">
-      <input id="admin-search" placeholder="Search name, email, ID…" oninput="renderAdminRegs()" style="flex:1;min-width:150px;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-family:'Outfit',sans-serif;font-size:.83rem;outline:none"/>
-      <select id="admin-filter" onchange="renderAdminRegs()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-family:'Outfit',sans-serif;font-size:.83rem;outline:none;background:#fdfcf9">
-        <option value="all">All</option><option value="pending">Pending</option><option value="paid">Paid</option><option value="rejected">Rejected</option>
-      </select>
-    </div>
+
+  // Active filter label
+  const filterLabels = {all:'All',paid:'Confirmed',pending:'Pending',rejected:'Rejected',checkin:'Checked In',voted:'Voted'};
+  const filterLabel = f !== 'all' ? `<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.7rem;flex-wrap:wrap">
+    <span style="font-size:.78rem;color:var(--muted)">Filtering by:</span>
+    <span class="badge b-pend" style="font-size:.75rem">${filterLabels[f]}</span>
+    <button onclick="setAdminFilter('all')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.75rem;text-decoration:underline">Clear filter</button>
+  </div>` : '';
+
+  const el = document.getElementById('admin-regs');
+  el.innerHTML = filterLabel + `
     ${filtered.length===0?'<div class="card" style="text-align:center;color:var(--muted);padding:1.5rem">No records found.</div>':filtered.map(r=>`
     <div class="card" style="padding:1.05rem 1.2rem;border-left:5px solid ${r.status==='paid'?'var(--green)':r.status==='rejected'?'var(--red)':'var(--gold)'};margin-bottom:.8rem">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.4rem;margin-bottom:.65rem">
