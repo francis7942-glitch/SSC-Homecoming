@@ -3,6 +3,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <!-- DNS preconnect — tells browser to start connecting to CDNs immediately -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin/>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin/>
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <!-- Preload the heaviest scripts so they download in parallel -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" as="script" crossorigin/>
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" as="script" crossorigin/>
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.6/babel.min.js" as="script" crossorigin/>
+  <link rel="preload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" as="script" crossorigin/>
+  <link rel="preload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" as="script" crossorigin/>
+  <!-- Google Fonts preload -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap"/></noscript>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -13,13 +28,13 @@
 
   <!-- React 18 -->
 
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin defer src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
 
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 
   <!-- Babel — transpiles JSX in-browser, no build step needed -->
 
-  <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.6/babel.min.js"></script>
 
   <!-- Firebase v10 compat UMD — two CDN options for resilience -->
 
@@ -46,10 +61,11 @@
   <style>
     html,body{height:100%;overscroll-behavior:none;-webkit-overflow-scrolling:touch;margin:0;padding:0}
     #root{min-height:100%}
-    #splash{position:fixed;inset:0;background:#0d1b3e;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .4s}
+    #splash{position:fixed;inset:0;background:#0d1b3e;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .6s}
     #splash.hide{opacity:0;pointer-events:none}
     .splash-ring{width:48px;height:48px;border:3px solid rgba(200,168,75,.3);border-top-color:#c8a84b;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:1rem}
-    .splash-txt{color:rgba(255,255,255,.6);font-family:sans-serif;font-size:.85rem}
+    .splash-txt{color:rgba(255,255,255,.6);font-family:sans-serif;font-size:.85rem;margin-bottom:.5rem}
+    .splash-sub{color:rgba(255,255,255,.35);font-family:sans-serif;font-size:.72rem;display:none}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 
@@ -58,10 +74,58 @@
   <!-- Splash shown while Firebase + Babel initialise -->
   <div id="splash">
     <div style="font-size:3rem;margin-bottom:.75rem">🎓</div>
+    <div style="font-family:'Cormorant Garamond',Georgia,serif;color:#c8a84b;font-size:1.3rem;font-weight:700;margin-bottom:.25rem">SSA Homecoming 2027</div>
+    <div style="font-family:sans-serif;color:rgba(255,255,255,.5);font-size:.72rem;margin-bottom:1.5rem;letter-spacing:1px;text-transform:uppercase">Saint Scholastica's Academy</div>
     <div class="splash-ring"></div>
-    <div class="splash-txt">Loading SSA Homecoming…</div>
+    <div class="splash-txt" id="splash-txt" style="margin-bottom:.6rem">Preparing app…</div>
+    <div style="width:220px;height:4px;background:rgba(255,255,255,.1);border-radius:100px;overflow:hidden;margin-bottom:1rem">
+      <div id="splash-bar" style="height:100%;width:5%;background:#c8a84b;border-radius:100px;transition:width .5s ease"></div>
+    </div>
+    <div id="splash-note" style="font-family:sans-serif;color:rgba(255,255,255,.3);font-size:.68rem;max-width:240px;text-align:center;line-height:1.5;display:none">
+      First load takes 10–20 seconds on iPad.<br/>Please wait — the app is being prepared.
+    </div>
   </div>
   <div id="root"></div>
+
+<script>
+// ─── Loading progress tracker ────────────────────────────────────────────────
+(function() {
+  var bar = document.getElementById("splash-bar");
+  var txt = document.getElementById("splash-txt");
+  var note = document.getElementById("splash-note");
+  
+  window._splashStep = function(pct, msg) {
+    if (bar) bar.style.width = pct + "%";
+    if (txt && msg) txt.textContent = msg;
+  };
+  
+  // Smooth progress animation so it never looks frozen
+  var pct = 5;
+  var interval = setInterval(function() {
+    pct = Math.min(pct + 2, 88); // creep up but never reach 100 until ready
+    if (bar) bar.style.width = pct + "%";
+  }, 400);
+  window._splashInterval = interval;
+  
+  // Step messages
+  setTimeout(function(){ if(txt) txt.textContent = "Loading Firebase…"; }, 500);
+  setTimeout(function(){ if(txt) txt.textContent = "Compiling app…"; }, 1500);
+  setTimeout(function(){ if(txt) txt.textContent = "Almost ready…"; }, 4000);
+  
+  // Show "please wait" note after 5 seconds
+  setTimeout(function(){ 
+    if(note) note.style.display = "block";
+    if(txt) txt.textContent = "Still loading — please wait…";
+  }, 5000);
+  
+  // Safety net: force complete after 45 seconds
+  setTimeout(function(){
+    clearInterval(window._splashInterval);
+    var el = document.getElementById("splash");
+    if(el) el.classList.add("hide");
+  }, 45000);
+})();
+</script>
 
 <script>
 // ─── Firebase initialisation ──────────────────────────────────────────────────
@@ -93,7 +157,16 @@ window._dbReady = false;
 })();
 </script>
 
-<script type="text/babel" data-presets="react">
+<script type="text/babel" data-presets="react" data-plugins="">
+// Babel finished compiling — hide splash and show app
+(function(){ 
+  if(window._splashInterval) clearInterval(window._splashInterval);
+  var bar = document.getElementById('splash-bar');
+  if(bar) bar.style.width = '95%';
+  var txt = document.getElementById('splash-txt');
+  if(txt) txt.textContent = 'Launching…';
+})();
+
 const { useState, useEffect, useRef, useCallback } = React;
 // db may be null if Firebase CDN was blocked (sandbox/preview only)
 const db = window._db;
@@ -211,7 +284,7 @@ async function sendConfirmationEmail(reg, qrDataUrl) {
 // STYLES
 // ─────────────────────────────────────────────────────────────────────────────
 const STYLES=`
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600;700&display=swap');
+/* Fonts preloaded via <link> in <head> */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-tap-highlight-color:transparent}
 body{font-family:'Outfit',sans-serif;background:#f5f0e8;color:#1a1410;min-height:100vh}
@@ -1074,7 +1147,15 @@ function App() {
 const [page,setPage]=useState(“register”);
 const [dbOk] = useState(!!window._dbReady);
 // Hide splash once app renders
-useEffect(()=>{const el=document.getElementById(“splash”);if(el){setTimeout(()=>el.classList.add(“hide”),300);}}, []);
+useEffect(()=>{
+if(window._splashInterval) clearInterval(window._splashInterval);
+var bar=document.getElementById(‘splash-bar’);
+if(bar) bar.style.width=‘100%’;
+setTimeout(()=>{
+const el=document.getElementById(‘splash’);
+if(el) el.classList.add(‘hide’);
+}, 400);
+}, []);
 // If Firebase failed (sandbox), show deploy instructions instead
 if (!dbOk) return (
 <>
