@@ -25,6 +25,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
+  <!-- QRCode.js — generates real, scannable QR codes -->
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
   <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font-family:'Outfit',sans-serif;background:#f5f0e8;color:#1a1410;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
@@ -300,7 +304,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.55rem;color:var(--navy);margin-bottom:.3rem">You're Registered!</h2>
           <p style="color:var(--muted);font-size:.83rem;margin:.3rem 0 .6rem">Pending payment confirmation. You'll receive an email once verified.</p>
           <div class="reg-chip" id="done-id"></div>
-          <div class="qr-frame"><canvas id="done-qr" class="qr-canvas" width="180" height="180"></canvas></div>
+          <div class="qr-frame"><div id="done-qr" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center"></div></div>
           <p style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .6rem">📸 Screenshot this QR — present it at the entrance.</p>
           <div id="email-status"></div>
           <div class="alert a-info" style="margin-top:1rem;text-align:left">ℹ️ <strong>Next:</strong> Our team will verify your GCash payment before the event.</div>
@@ -523,17 +527,32 @@ const SEED_CANDIDATES = [
 const genId = () => 'SSC-' + Date.now().toString(36).toUpperCase().slice(-4) + Math.random().toString(36).slice(2,5).toUpperCase();
 
 // ── QR CODE (canvas-based) ───────────────────────────────────────────
-function drawQR(canvas, text) {
-  const size=25, mat=Array(size).fill(null).map(()=>Array(size).fill(0));
-  const finder=(r,c)=>{for(let i=0;i<7;i++)for(let j=0;j<7;j++){const on=i===0||i===6||j===0||j===6||(i>=2&&i<=4&&j>=2&&j<=4);if(r+i<size&&c+j<size)mat[r+i][c+j]=on?1:0;}};
-  finder(0,0);finder(0,18);finder(18,0);
-  let h=5381;for(let i=0;i<text.length;i++)h=((h<<5)+h)^text.charCodeAt(i);h=Math.abs(h);
-  for(let i=0;i<size;i++)for(let j=0;j<size;j++){if(mat[i][j]===0&&!((i<8&&j<8)||(i<8&&j>=18)||(i>=18&&j<8)))mat[i][j]=(h>>>((i*7+j*3)%31))&1;}
-  for(let i=8;i<17;i++){mat[6][i]=i%2===0?1:0;mat[i][6]=i%2===0?1:0;}
-  const w=canvas.width, cell=w/size, ctx=canvas.getContext('2d');
-  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,w);
-  ctx.fillStyle='#0d1b3e';
-  mat.forEach((row,i)=>row.forEach((v,j)=>{if(v)ctx.fillRect(j*cell,i*cell,cell-.5,cell-.5);}));
+function drawQR(container, text) {
+  // Clear previous QR if any
+  container.innerHTML = '';
+  if (typeof QRCode !== 'undefined') {
+    // Use QRCode.js — generates a real, standards-compliant scannable QR code
+    new QRCode(container, {
+      text: text,
+      width: 180,
+      height: 180,
+      colorDark: '#0d1b3e',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } else {
+    // Fallback: show the text if library failed to load
+    container.innerHTML = '<div style="padding:1rem;font-size:.7rem;word-break:break-all;color:#0d1b3e;text-align:center">' + text + '</div>';
+  }
+}
+
+// Get QR as data URL for email (QRCode.js renders to canvas internally)
+function getQRDataUrl(container) {
+  const canvas = container.querySelector('canvas');
+  if (canvas) return canvas.toDataURL('image/png');
+  const img = container.querySelector('img');
+  if (img) return img.src;
+  return '';
 }
 
 // ── EMAIL ─────────────────────────────────────────────────────────────
@@ -613,10 +632,12 @@ async function regSubmit() {
   const qr=document.getElementById('done-qr');
   drawQR(qr, reg.id);
   btn.textContent='Submit Registration ✓';btn.disabled=false;
+  // Wait a tick for QRCode.js to finish rendering before grabbing data URL
+  await new Promise(r=>setTimeout(r,200));
   // Email
   const es=document.getElementById('email-status');
   es.innerHTML='<div class="email-chip chip-wait">📧 Sending confirmation email…</div>';
-  const qrUrl=qr.toDataURL('image/png');
+  const qrUrl=getQRDataUrl(qr);
   const res=await sendEmail(reg,qrUrl);
   if(res.sim) es.innerHTML='<div class="email-chip chip-sim">⚠️ EmailJS not configured yet</div>';
   else if(res.ok) es.innerHTML='<div class="email-chip chip-ok">✅ Confirmation sent to '+reg.email+'</div>';
