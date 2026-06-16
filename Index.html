@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -16,17 +15,11 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin/>
 
   <!-- Firebase (only external dependency) -->
-
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-
   <!-- jsQR for QR code photo decoding -->
-
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-
   <!-- QRCode.js — generates real, scannable QR codes -->
-
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
   <style>
@@ -227,7 +220,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
 
 @media(max-width:380px){.row2{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.brand small{display:none}}
   </style>
-
 </head>
 <body>
 <div id="app">
@@ -242,7 +234,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
   </nav>
 
   <!-- REGISTER PAGE -->
-
   <div id="page-register" class="page active">
     <div class="hero">
       <div class="hero-badge">Alumni Homecoming 2027</div>
@@ -315,7 +306,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
   </div>
 
   <!-- EVENT DAY PAGE -->
-
   <div id="page-event" class="page">
     <div class="hero" style="padding:1.6rem 1.2rem">
       <div class="hero-badge">Event Day Operations</div>
@@ -378,7 +368,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
   </div>
 
   <!-- ADMIN PAGE -->
-
   <div id="page-admin" class="page">
     <div class="hero" style="padding:1.6rem 1.2rem">
       <div class="hero-badge">Admin Dashboard</div>
@@ -420,7 +409,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
 </div>
 
 <!-- CAMERA OVERLAY -->
-
 <div id="cam-overlay" class="cam-overlay" style="display:none">
   <video id="cam-video" class="cam-live" playsinline muted autoplay></video>
   <div class="cam-finder"></div>
@@ -437,7 +425,6 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
 </div>
 
 <!-- LIGHTBOX -->
-
 <div id="lightbox" class="lightbox" style="display:none" onclick="closeLightbox()">
   <div class="lightbox-inner" onclick="event.stopPropagation()">
     <div class="lightbox-head">
@@ -790,8 +777,16 @@ function adminUnlock() {
   const pin=document.getElementById('pin-input').value;
   if(pin===CFG.adminPin){
     adminUnlocked=true;
+    // Show dashboard FIRST so DOM elements exist before Firebase callbacks fire
     document.getElementById('admin-pin').style.display='none';
     document.getElementById('admin-dash').style.display='block';
+    // Ensure only regs tab is visible initially
+    document.getElementById('admin-regs').style.display='block';
+    document.getElementById('admin-cands').style.display='none';
+    document.getElementById('admin-results').style.display='none';
+    // Show loading state immediately
+    document.getElementById('admin-regs').innerHTML='<div class="card" style="text-align:center;color:var(--muted);padding:1.5rem">⏳ Loading registrations…</div>';
+    document.getElementById('admin-stats').innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:.8rem;padding:.5rem">Loading…</div>';
     initAdmin();
   } else {
     document.getElementById('pin-err').style.display='block';
@@ -803,9 +798,35 @@ document.getElementById('pin-input').addEventListener('keydown',e=>{if(e.key==='
 let adminRegs=[], adminVotes=[], adminCandidates=[];
 
 function initAdmin() {
-  FS.onRegs(regs=>{adminRegs=regs;renderAdminRegs();renderAdminStats();renderAdminResults();});
-  FS.onVotes(votes=>{adminVotes=votes;renderAdminResults();renderAdminStats();});
-  FS.getCandidates().then(c=>{adminCandidates=c.length?c:SEED_CANDIDATES;renderAdminCands();renderAdminResults();});
+  if(!db) {
+    document.getElementById('admin-regs').innerHTML='<div class="card" style="border-left:4px solid var(--red);padding:1.25rem"><strong style="color:var(--red)">Firebase not connected.</strong><br/><span style="font-size:.82rem;color:var(--muted)">Check your internet connection and reload the page.</span></div>';
+    return;
+  }
+  // Real-time listener — fires immediately with current data, then on every change
+  FS.onRegs(regs=>{
+    adminRegs = regs;
+    // Guard: only render if dashboard is visible
+    if(document.getElementById('admin-dash').style.display !== 'none') {
+      renderAdminStats();
+      renderAdminRegs();
+      renderAdminResults();
+    }
+  });
+  FS.onVotes(votes=>{
+    adminVotes = votes;
+    if(document.getElementById('admin-dash').style.display !== 'none') {
+      renderAdminStats();
+      renderAdminResults();
+    }
+  });
+  FS.getCandidates().then(c=>{
+    adminCandidates = c.length ? c : SEED_CANDIDATES;
+    renderAdminCands();
+    renderAdminResults();
+  }).catch(e=>{
+    adminCandidates = SEED_CANDIDATES;
+    renderAdminCands();
+  });
 }
 function adminTab(name, btn) {
   ['regs','cands','results'].forEach(t=>{
@@ -814,6 +835,10 @@ function adminTab(name, btn) {
   });
   document.querySelectorAll('#admin-dash .itab').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
+  // Re-render the active tab to ensure fresh data
+  if(name==='regs') { renderAdminStats(); renderAdminRegs(); }
+  if(name==='cands') renderAdminCands();
+  if(name==='results') renderAdminResults();
 }
 // Track active filter separately from the dropdown (which no longer exists)
 let adminActiveFilter = 'all';
@@ -848,7 +873,8 @@ function renderAdminStats() {
     {l:'Voted',n:vt,        k:'voted',   c:'#5b21b6'},
     {l:'Rejected',n:rej,    k:'rejected',c:'var(--red)'},
   ];
-  document.getElementById('admin-stats').innerHTML = items.map(({l,n,k,c})=>
+  const statsEl = document.getElementById('admin-stats'); if(!statsEl) return;
+  statsEl.innerHTML = items.map(({l,n,k,c})=>
     `<div class="stat${f===k?' active-filter':''}" onclick="setAdminFilter('${k}')" title="Filter by ${l}">
       <div class="stat-n" style="color:${c}">${n}</div>
       <div class="stat-l">${l}</div>
@@ -887,6 +913,7 @@ function renderAdminRegs() {
   </div>` : '';
 
   const el = document.getElementById('admin-regs');
+  if(!el) return;
   el.innerHTML = filterLabel + `
     ${filtered.length===0?'<div class="card" style="text-align:center;color:var(--muted);padding:1.5rem">No records found.</div>':filtered.map(r=>`
     <div class="card" style="padding:1.05rem 1.2rem;border-left:5px solid ${r.status==='paid'?'var(--green)':r.status==='rejected'?'var(--red)':'var(--gold)'};margin-bottom:.8rem">
@@ -1063,6 +1090,5 @@ function handleScan(id) {
   else if(camMode==='vote') doVoteScan(id);
 }
 </script>
-
 </body>
 </html>
