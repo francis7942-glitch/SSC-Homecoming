@@ -379,7 +379,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
         <div style="font-size:2rem;margin-bottom:.4rem">🔐</div>
         <h2>Admin Access</h2>
         <p style="color:var(--muted);font-size:.83rem;margin-bottom:1.1rem">Enter the admin PIN to continue.</p>
-        <input class="pin-in" id="pin-input" type="password" inputmode="numeric" placeholder="• • • •" maxlength="6" onkeydown="if(event.key==='Enter')adminUnlock()"/>
+        <input class="pin-in" id="pin-input" type="password" inputmode="numeric" placeholder="• • • •" maxlength="6" autocomplete="off" autocorrect="off" spellcheck="false" onkeydown="if(event.key==='Enter')adminUnlock()"/>
         <div id="pin-err" class="alert a-err" style="display:none;margin-top:.6rem">Incorrect PIN.</div>
         <button class="btn btn-navy" style="margin-top:.85rem;width:100%" onclick="adminUnlock()">Unlock</button>
       </div>
@@ -580,6 +580,13 @@ function showPage(name) {
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b=>{if(b.textContent.toLowerCase().includes(name.slice(0,3)))b.classList.add('active');});
+  // Clear PIN input on every visit to admin page to prevent iOS autofill/ghost input
+  if(name === 'admin') {
+    const pinEl = document.getElementById('pin-input');
+    if(pinEl) { pinEl.value = ''; }
+    const pinErr = document.getElementById('pin-err');
+    if(pinErr) pinErr.style.display = 'none';
+  }
 }
 
 // ── REGISTRATION ─────────────────────────────────────────────────────
@@ -715,7 +722,7 @@ FS.onRegs(regs=>{
 let voteTimer=null, voteLastTime=0;
 let currentVoter=null, selectedCandidates=[], allCandidates=[];
 
-FS.getCandidates().then(c=>{ allCandidates=c.length?c:SEED_CANDIDATES; });
+FS.getCandidates().then(c=>{ allCandidates=c; });
 
 function voteInputChange(input){
   const now=Date.now(), gap=now-voteLastTime; voteLastTime=now;
@@ -815,7 +822,7 @@ function adminUnlock() {
     document.getElementById('pin-input').value='';
   }
 }
-document.getElementById('pin-input').addEventListener('keydown',e=>{if(e.key==='Enter')adminUnlock();});
+// PIN Enter key handled via inline onkeydown attribute
 
 let adminRegs=[], adminVotes=[], adminCandidates=[];
 
@@ -851,11 +858,12 @@ function initAdmin() {
     }
   });
   FS.getCandidates().then(c=>{
-    adminCandidates = c.length ? c : SEED_CANDIDATES;
+    adminCandidates = c; // Empty is fine — user deleted them intentionally
     renderAdminCands();
     renderAdminResults();
   }).catch(e=>{
-    adminCandidates = SEED_CANDIDATES;
+    console.warn('getCandidates error:', e.message);
+    adminCandidates = [];
     renderAdminCands();
   });
 }
@@ -991,7 +999,10 @@ function renderAdminCands() {
     <div class="card">
       <span class="card-head">Board of Directors Candidates</span>
       <div class="tbl"><table><thead><tr><th>Name</th><th>Batch</th><th>Position</th><th></th></tr></thead><tbody>
-        ${adminCandidates.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.batch}</td><td>${c.position}</td><td><button class="btn-no" onclick="delCand('${c.id}')">Remove</button></td></tr>`).join('')}
+        ${adminCandidates.length === 0
+          ? '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.25rem">No candidates yet. Add them below.</td></tr>'
+          : adminCandidates.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.batch}</td><td>${c.position}</td><td><button class="btn-no" onclick="delCand('${c.id}')">Remove</button></td></tr>`).join('')
+        }
       </tbody></table></div>
       <div style="background:var(--cream);border:1px solid var(--border);border-radius:9px;padding:.9rem;margin-top:1rem">
         <p style="font-weight:700;color:var(--navy);font-size:.83rem;margin-bottom:.7rem">Add Candidate</p>
