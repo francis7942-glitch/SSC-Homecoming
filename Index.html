@@ -481,13 +481,32 @@ const FS = {
     const s = await db.collection('registrations').doc(id).get();
     return s.exists ? {id:s.id,...s.data()} : null;
   },
-  onRegs: cb => db ? db.collection('registrations').orderBy('createdAt','desc').onSnapshot(
-    s => cb(s.docs.map(d=>({id:d.id,...d.data()})))
+  onRegs: cb => db ? db.collection('registrations').onSnapshot(
+    snap => {
+      // Sort client-side — no Firestore index required
+      const docs = snap.docs.map(d=>({id:d.id,...d.data()}));
+      docs.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+      cb(docs);
+    },
+    err => {
+      console.error('Firestore error:', err);
+      // Show error in admin panel
+      const el = document.getElementById('admin-regs');
+      if(el) el.innerHTML = '<div class="card" style="border-left:4px solid var(--red);padding:1.25rem"><strong style="color:var(--red)">Database error: ' + err.message + '</strong><br/><span style="font-size:.82rem;color:var(--muted)">Check your Firestore rules and try reloading.</span></div>';
+    }
   ) : ()=>{},
   getCandidates: async () => {
     if(!db) return [];
-    const s = await db.collection('candidates').orderBy('order').get();
-    return s.docs.map(d=>({id:d.id,...d.data()}));
+    try {
+      const s = await db.collection('candidates').get();
+      const docs = s.docs.map(d=>({id:d.id,...d.data()}));
+      // Sort by order field client-side — no index needed
+      docs.sort((a,b) => (a.order||0) - (b.order||0));
+      return docs;
+    } catch(e) {
+      console.warn('getCandidates error:', e.message);
+      return [];
+    }
   },
   setCandidates: async list => {
     if(!db) return;
@@ -499,7 +518,10 @@ const FS = {
   },
   recordVote: (regId,cIds) => db && db.collection('votes').doc(regId).set({regId,candidateIds:cIds,votedAt:new Date().toISOString()}),
   hasVoted: async id => { if(!db) return false; const s=await db.collection('votes').doc(id).get(); return s.exists; },
-  onVotes: cb => db ? db.collection('votes').onSnapshot(s=>cb(s.docs.map(d=>d.data()))) : ()=>{}
+  onVotes: cb => db ? db.collection('votes').onSnapshot(
+    s => cb(s.docs.map(d=>d.data())),
+    err => console.warn('votes listener error:', err.message)
+  ) : ()=>{}
 };
 
 const SEED_CANDIDATES = [
@@ -799,9 +821,18 @@ let adminRegs=[], adminVotes=[], adminCandidates=[];
 
 function initAdmin() {
   if(!db) {
-    document.getElementById('admin-regs').innerHTML='<div class="card" style="border-left:4px solid var(--red);padding:1.25rem"><strong style="color:var(--red)">Firebase not connected.</strong><br/><span style="font-size:.82rem;color:var(--muted)">Check your internet connection and reload the page.</span></div>';
+    const el = document.getElementById('admin-regs');
+    if(el) el.innerHTML='<div class="card" style="border-left:4px solid var(--red);padding:1.25rem"><strong style="color:var(--red)">Firebase not connected.</strong><br/><span style="font-size:.82rem;color:var(--muted)">Check your internet connection and reload the page.</span></div>';
     return;
   }
+  // Test Firestore connection with a simple read first
+  db.collection('registrations').limit(1).get()
+    .then(() => console.log('Firestore connection OK'))
+    .catch(e => {
+      console.error('Firestore connection test failed:', e);
+      const el = document.getElementById('admin-regs');
+      if(el) el.innerHTML = '<div class="card" style="border-left:4px solid var(--red);padding:1.25rem"><strong style="color:var(--red)">Firestore error: ' + e.message + '</strong><br/><span style="font-size:.82rem;color:var(--muted)">Your Firestore security rules may be blocking reads. Go to Firebase Console → Firestore → Rules and ensure reads are allowed.</span></div>';
+    });
   // Real-time listener — fires immediately with current data, then on every change
   FS.onRegs(regs=>{
     adminRegs = regs;
