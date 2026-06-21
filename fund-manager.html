@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Alumni Fund</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+input, textarea, select {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: auto;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f0f0; color: #111; font-size: 14px; -webkit-text-size-adjust: 100%; }
+
+/* ── BOTTOM APP BAR ── */
+.app-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+  background: #fff; border-top: 1px solid #e0e0e0;
+  display: flex; align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+}
+.bar-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 8px 4px 10px; gap: 3px; background: none; border: none; cursor: pointer;
+  font-family: inherit; color: #aaa; transition: color .15s, background .15s;
+  border-top: 2px solid transparent; position: relative;
+}
+.bar-btn .bar-icon { font-size: 20px; line-height: 1; }
+.bar-btn .bar-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.bar-btn.active { color: #2563eb; border-top-color: #2563eb; background: #f0f5ff; }
+.bar-btn.active .bar-label { color: #2563eb; }
+.bar-btn.treasurer-btn.active { color: #16a34a; border-top-color: #16a34a; background: #f0fdf4; }
+.bar-btn.auditor-btn.active   { color: #d97706; border-top-color: #d97706; background: #fffbeb; }
+.bar-logout {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 8px 12px 10px; gap: 3px; background: none; border: none; cursor: pointer;
+  font-family: inherit; color: #dc2626; border-left: 1px solid #f0f0f0;
+  border-top: 2px solid transparent;
+}
+.bar-logout .bar-icon { font-size: 18px; }
+.bar-logout .bar-label { font-size: 10px; font-weight: 600; text-transform: uppercase; }
+
+/* ── PAGE WRAPPER (leaves room for bottom bar) ── */
+.page { display: none; padding-bottom: calc(68px + env(safe-area-inset-bottom)); min-height: 100vh; }
+.page.active { display: block; }
+
+/* ── TOP HEADER (pages that need it) ── */
+.top-bar {
+  background: #fff; border-bottom: 1px solid #e8e8e8;
+  padding: 10px 14px 8px; position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+/* Dashboard wrap gets top padding to clear sticky bar */
+#page-dashboard .wrap { padding-top: 12px; }
+.top-bar-title { font-size: 16px; font-weight: 700; }
+.top-bar-sub { font-size: 12px; color: #888; margin-top: 2px; }
+.top-role-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px;
+  border-radius: 20px; flex-shrink: 0;
+}
+.role-treasurer { background: #dcfce7; color: #15803d; }
+.role-auditor   { background: #fef9c3; color: #92400e; }
+
+/* ── PIN MODAL ── */
+.pin-modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 500;
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 80px;
+}
+.pin-modal-bg.open { display: flex; }
+.pin-modal {
+  background: #fff; border-radius: 16px; padding: 28px 24px 24px;
+  width: calc(100% - 32px); max-width: 400px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.3);
+}
+.pin-modal-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; text-align: center; }
+.pin-modal-sub { font-size: 13px; color: #888; text-align: center; margin-bottom: 20px; }
+.pin-input { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; font-size: 28px; letter-spacing: 10px; text-align: center; outline: none; margin-bottom: 12px; }
+.pin-input:focus { border-color: #2563eb; }
+.pin-actions { display: flex; gap: 10px; }
+.btn-enter { flex: 1; padding: 13px; background: #2563eb; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-enter.green { background: #16a34a; }
+.btn-cancel-pin { padding: 13px 18px; background: none; border: 1.5px solid #ddd; border-radius: 10px; font-size: 14px; cursor: pointer; font-family: inherit; color: #444; }
+.pin-err { color: #dc2626; font-size: 12px; text-align: center; margin-top: 8px; min-height: 18px; }
+.pin-note { font-size: 11px; color: #bbb; text-align: center; margin-top: 14px; line-height: 1.5; }
+.pin-note code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+
+/* ── WRAP ── */
+.wrap { max-width: 960px; margin: 0 auto; padding: 14px 12px; }
+
+/* ── SUMMARY CARDS ── */
+.sum-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+/* When net spans full + 3 cards: last card also spans full so no orphan */
+.sum-row .sum-card:last-child:nth-child(4) { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; background: #f5f5f5; }
+.sum-row .sum-card:last-child:nth-child(4) .s-label { margin-bottom: 0; }
+.sum-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 14px; }
+.sum-card.net { background: #111; color: #fff; grid-column: 1 / -1; }
+.sum-row.four-col .sum-card.net { grid-column: auto; }
+.s-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #888; margin-bottom: 4px; }
+.sum-card.net .s-label { color: #aaa; margin-bottom: 4px; }
+.s-val { font-size: 18px; font-weight: 700; color: #111; }
+.sum-card.net .s-val { color: #fff; font-size: 22px; }
+.s-sub { font-size: 11px; color: #999; margin-top: 2px; }
+.sum-card.net .s-sub { color: #888; font-size: 12px; margin-top: 2px; }
+
+/* ── ACCOUNT CARDS ── */
+.acct-row { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.acct-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 12px; border-top: 3px solid #ddd; }
+.acct-card.gcash    { border-top-color: #00adef; }
+.acct-card.eastwest { border-top-color: #d4382a; }
+.acct-card.chinabank{ border-top-color: #e31837; }
+.a-name { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #888; margin-bottom: 5px; }
+.a-bal  { font-size: 15px; font-weight: 700; color: #111; }
+.a-count{ font-size: 10px; color: #bbb; margin-top: 2px; }
+
+/* ── SECTION TABS (inside dashboard) ── */
+.sec-tabs { display: flex; border-bottom: 2px solid #e0e0e0; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.sec-tabs::-webkit-scrollbar { display: none; }
+.sec-tab { flex-shrink: 0; padding: 10px 12px; font-size: 12px; font-weight: 600; color: #888; background: none; border: none; cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -2px; font-family: inherit; }
+.sec-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+/* ── PANEL ── */
+.panel { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 12px; overflow: visible; }
+.panel-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+
+/* ── FORM ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .form-grid { grid-template-columns: 1fr; } .field.full { grid-column: 1; } }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field.full { grid-column: 1 / -1; }
+.field label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.field input, .field select, .field textarea { padding: 10px 11px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; color: #111; background: #fafafa; outline: none; width: 100%; min-width: 0; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #2563eb; background: #fff; }
+.field textarea { resize: vertical; min-height: 60px; }
+.type-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.type-btn { flex: 1; padding: 10px 4px; border: 2px solid #ddd; border-radius: 8px; background: none; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; }
+.type-btn.income.on  { background: #f0fdf4; border-color: #16a34a; color: #16a34a; }
+.type-btn.expense.on { background: #fef2f2; border-color: #dc2626; color: #dc2626; }
+.type-btn.transfer.on{ background: #eff6ff; border-color: #2563eb; color: #2563eb; }
+.btn-primary { padding: 11px 22px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 8px; font-family: inherit; }
+.ok-msg { margin-top: 10px; padding: 9px 12px; background: #f0fdf4; color: #16a34a; border-radius: 8px; font-size: 13px; font-weight: 600; display: none; }
+
+/* ── FILTERS ── */
+.tbl-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.tbl-controls input, .tbl-controls select { padding: 8px 10px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 13px; font-family: inherit; color: #111; background: #fff; outline: none; }
+.tbl-controls input { flex: 1; min-width: 140px; }
+.chip-row { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+.chip-row::-webkit-scrollbar { display: none; }
+.chip { flex-shrink: 0; font-size: 12px; padding: 4px 12px; border: 1.5px solid #ddd; border-radius: 20px; cursor: pointer; background: #fff; color: #555; font-weight: 500; }
+.chip.on { background: #111; color: #fff; border-color: #111; }
+.tbl-empty { text-align: center; padding: 36px; color: #aaa; }
+
+/* ── LEDGER CARDS ── */
+.lcard { background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+.lcard-row1 { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.lcard-badges { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; flex: 1; }
+.lcard-amt { font-size: 17px; font-weight: 700; font-family: monospace; flex-shrink: 0; white-space: nowrap; }
+.lcard-amt.income   { color: #16a34a; }
+.lcard-amt.expense  { color: #dc2626; }
+.lcard-amt.transfer { color: #2563eb; }
+.lcard-desc { font-size: 13px; color: #222; margin-bottom: 5px; line-height: 1.4; }
+.lcard-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #999; }
+.lcard-from { font-size: 12px; color: #555; margin-top: 5px; }
+.lcard-footer { display: flex; justify-content: flex-end; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; }
+.lock-icon { font-size: 12px; color: #ccc; }
+.btn-del { background: none; border: 1px solid #fca5a5; color: #dc2626; cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 6px; font-family: inherit; }
+
+/* ── BADGES ── */
+.type-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; }
+.type-tag.income   { background: #dcfce7; color: #15803d; }
+.type-tag.expense  { background: #fee2e2; color: #b91c1c; }
+.type-tag.transfer { background: #dbeafe; color: #1d4ed8; }
+.cat-pill  { font-size: 10px; padding: 3px 8px; border-radius: 20px; background: #f0f0f0; color: #555; font-weight: 600; white-space: nowrap; }
+.acct-tag  { font-size: 10px; padding: 3px 8px; border-radius: 20px; background: #111; color: #fff; font-weight: 700; font-family: monospace; white-space: nowrap; }
+
+/* ── AUDIT ── */
+.audit-item { padding: 11px 14px; border-left: 3px solid #e0e0e0; margin-bottom: 8px; border-radius: 0 8px 8px 0; background: #fafafa; }
+.audit-item.add    { border-left-color: #16a34a; }
+.audit-item.delete { border-left-color: #dc2626; }
+.audit-meta { font-size: 11px; color: #aaa; font-family: monospace; margin-bottom: 3px; }
+.audit-desc { font-size: 13px; color: #444; line-height: 1.4; }
+
+/* ── CONTRIBUTORS ── */
+.stat-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f5f5f5; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.stat-item .s-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #888; margin-bottom: 2px; }
+.stat-item .s-val   { font-size: 14px; font-weight: 700; color: #111; }
+.contrib-controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.contrib-search { flex: 1; min-width: 140px; padding: 9px 11px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 13px; font-family: inherit; outline: none; }
+.contrib-search:focus { border-color: #2563eb; }
+.contrib-sort { padding: 9px 11px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 13px; font-family: inherit; outline: none; background: #fff; }
+.contrib-grid { display: flex; flex-direction: column; gap: 10px; }
+.contrib-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 14px; cursor: pointer; position: relative; }
+.contrib-card:active { border-color: #2563eb; }
+.c-rank { position: absolute; top: 12px; right: 12px; font-size: 11px; font-weight: 700; color: #888; background: #f0f0f0; padding: 2px 8px; border-radius: 20px; }
+.c-rank.r1 { background: #fef9c3; color: #854d0e; }
+.c-rank.r2 { background: #f0f0f0; color: #444; }
+.c-rank.r3 { background: #fde8d8; color: #7c3a1e; }
+.c-name  { font-size: 15px; font-weight: 700; color: #111; margin-bottom: 2px; padding-right: 60px; }
+.c-meta  { font-size: 11px; color: #888; margin-bottom: 8px; }
+.c-total { font-size: 22px; font-weight: 700; color: #16a34a; }
+.c-bar-bg{ height: 4px; background: #f0f0f0; border-radius: 4px; margin-top: 8px; overflow: hidden; }
+.c-bar   { height: 100%; background: #2563eb; border-radius: 4px; }
+
+/* ── CONTRIBUTOR MODAL ── */
+.cmodal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 400; display: none; align-items: flex-end; justify-content: center; }
+.cmodal-bg.open { display: flex; }
+.cmodal { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px; width: 100%; max-width: 600px; max-height: 85vh; overflow-y: auto; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.cmodal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 10px; }
+.cmodal-title { font-size: 17px; font-weight: 700; }
+.cmodal-sub   { font-size: 12px; color: #888; margin-top: 2px; }
+.cmodal-total { font-size: 20px; font-weight: 700; color: #16a34a; white-space: nowrap; }
+.btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: #aaa; line-height: 1; padding: 0; }
+.c-txn { padding: 11px 0; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.c-txn:last-child { border-bottom: none; }
+.c-txn-date { font-size: 11px; color: #aaa; font-family: monospace; margin-bottom: 2px; }
+.c-txn-desc { font-size: 13px; color: #444; }
+.c-txn-cat  { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 20px; background: #f0f0f0; color: #666; font-weight: 600; margin-top: 3px; }
+.c-txn-amt  { font-weight: 700; color: #16a34a; font-size: 15px; white-space: nowrap; font-family: monospace; }
+
+/* ── DELETE MODAL ── */
+.del-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 400; display: none; align-items: flex-end; justify-content: center; }
+.del-modal-bg.open { display: flex; }
+.del-modal { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px; width: 100%; max-width: 480px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+.del-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+.del-body  { font-size: 14px; color: #444; line-height: 1.6; margin-bottom: 18px; }
+.del-footer { display: flex; gap: 10px; }
+.btn-cancel { flex: 1; padding: 12px; background: none; border: 1.5px solid #ddd; border-radius: 10px; font-size: 14px; font-family: inherit; cursor: pointer; color: #444; }
+.btn-danger { flex: 1; padding: 12px; background: #dc2626; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+/* ── PUBLIC PAGE ── */
+.pub-head { text-align: center; padding: 20px 14px 14px; background: #111; }
+.pub-title { font-size: 22px; font-weight: 700; color: #fff; }
+.pub-sub   { font-size: 13px; color: #aaa; margin-top: 3px; }
+.pub-updated { font-size: 11px; color: #666; font-family: monospace; margin-top: 4px; }
+.pub-cat-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 8px; }
+.pub-cat-row:last-child { border-bottom: none; }
+.pub-cat-name { font-size: 13px; color: #333; flex: 1; }
+.pub-cat-amt  { font-size: 14px; font-weight: 700; font-family: monospace; white-space: nowrap; }
+.pub-cat-amt.income  { color: #16a34a; }
+.pub-cat-amt.expense { color: #dc2626; }
+.pub-cat-pct { font-size: 11px; color: #aaa; font-family: monospace; width: 40px; text-align: right; flex-shrink: 0; }
+.pub-contrib-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+.pub-contrib-row:last-child { border-bottom: none; }
+.pub-contrib-rank { font-size: 16px; width: 28px; flex-shrink: 0; }
+.pub-contrib-name { flex: 1; font-size: 14px; color: #222; font-weight: 500; }
+.pub-contrib-count { font-size: 12px; color: #aaa; flex-shrink: 0; }
+.pub-contrib-amt  { font-size: 14px; font-weight: 700; color: #16a34a; font-family: monospace; white-space: nowrap; }
+
+/* ── PAYMENT CARDS ── */
+.pcard { background: #fff; border: 1px solid #e4e4e4; border-radius: 10px; padding: 14px; margin-bottom: 10px; border-left: 3px solid #f59e0b; }
+.pcard-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.pcard-name { font-size: 15px; font-weight: 700; color: #111; }
+.pcard-batch { font-size: 12px; color: #888; margin-top: 2px; }
+.pcard-amount { font-size: 18px; font-weight: 700; color: #16a34a; font-family: monospace; white-space: nowrap; }
+.pcard-meta { font-size: 12px; color: #666; margin-bottom: 10px; line-height: 1.6; }
+.pcard-ref { font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 2px 8px; border-radius: 4px; color: #333; }
+.pcard-actions { display: flex; gap: 8px; }
+.btn-approve { flex: 1; padding: 10px; background: #16a34a; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.btn-reject  { padding: 10px 14px; background: none; border: 1.5px solid #dc2626; color: #dc2626; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn-receipt { padding: 10px 14px; background: none; border: 1.5px solid #ddd; color: #555; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: inherit; }
+.pcard.approved { border-left-color: #16a34a; opacity: .7; }
+.pcard.rejected { border-left-color: #dc2626; opacity: .7; }
+.p-status-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+.p-status-badge.pending  { background: #fef9c3; color: #92400e; }
+.p-status-badge.paid     { background: #dcfce7; color: #15803d; }
+.p-status-badge.rejected { background: #fee2e2; color: #b91c1c; }
+.p-filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.p-filter-btn { padding: 6px 14px; border: 1.5px solid #ddd; border-radius: 20px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; color: #555; }
+.p-filter-btn.on { background: #111; color: #fff; border-color: #111; }
+
+/* ── DONOR AUTOCOMPLETE ── */
+.autocomplete-wrap { position: relative; }
+.autocomplete-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+  background: #fff; border: 1.5px solid #2563eb; border-top: none;
+  border-radius: 0 0 10px 10px; overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  display: none;
+}
+.autocomplete-list.open { display: block; }
+.ac-item {
+  padding: 11px 14px; cursor: pointer; display: flex;
+  justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #f0f0f0; gap: 10px;
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:active { background: #eff6ff; }
+.ac-name { font-size: 14px; font-weight: 600; color: #111; }
+.ac-meta { font-size: 11px; color: #888; margin-top: 1px; }
+.ac-total { font-size: 13px; font-weight: 700; color: #16a34a; white-space: nowrap; font-family: monospace; }
+.ac-new { padding: 10px 14px; font-size: 12px; color: #aaa; font-style: italic; }
+
+/* ── RESPONSIVE ── */
+@media (min-width: 480px) {
+  .acct-row { flex-direction: row; }
+  .acct-card { flex: 1; min-width: 0; }
+}
+@media (min-width: 640px) {
+  .sum-row { grid-template-columns: repeat(4, 1fr); }
+  .sum-card.net { grid-column: auto; display: block; }
+  .sum-card.net .s-label { margin-bottom: 4px; }
+  .stat-bar { grid-template-columns: repeat(4, 1fr); }
+  .contrib-grid { display: grid; grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 900px) {
+  .contrib-grid { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ PUBLIC PAGE (default landing) ══ -->
+<div class="page active" id="page-public">
+  <div class="pub-head">
+    <div class="pub-title" style="color:#fff">🎓 Alumni Homecoming Fund</div>
+    <div class="pub-sub">Transparency Report</div>
+    <div class="pub-updated" id="pub-updated"></div>
+  </div>
+  <div class="wrap">
+    <div class="sum-row" id="pub-sum"></div>
+    <div class="acct-row" id="pub-accts" style="margin-bottom:14px"></div>
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Income by Category</div>
+      <div id="pub-inc"></div>
+    </div>
+    <div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">Expenses by Category</div>
+      <div id="pub-exp"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Top Contributors</div>
+      <div id="pub-contribs"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD PAGE (treasurer / auditor) ══ -->
+<div class="page" id="page-dashboard">
+  <div class="top-bar">
+    <div class="top-bar-title">Fund Dashboard</div>
+    <div id="top-role-badge"></div>
+  </div>
+  <div class="wrap">
+    <div class="sec-tabs" id="sec-tabs-row">
+      <button class="sec-tab" id="tab-add"          onclick="goTab('add')">+ Add</button>
+      <button class="sec-tab active" id="tab-ledger" onclick="goTab('ledger')">📋 Ledger</button>
+      <button class="sec-tab"        id="tab-contributors"  onclick="goTab('contributors')">👥 Contributors</button>
+      <button class="sec-tab"        id="tab-audit"         onclick="goTab('audit')">🔍 Audit Log</button>
+      <button class="sec-tab"        id="tab-payments"      onclick="goTab('payments')">💳 Payments <span id="payments-badge" style="display:none;background:#dc2626;color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;margin-left:4px;font-weight:700"></span></button>
+    </div>
+
+    <!-- ADD -->
+    <div id="sec-add">
+      <div class="panel">
+        <div class="panel-title">Record Transaction</div>
+        <div class="type-row">
+          <button class="type-btn income on"  onclick="setType('income',this)">💚 Income</button>
+          <button class="type-btn expense"     onclick="setType('expense',this)">🔴 Expense</button>
+          <button class="type-btn transfer"    onclick="setType('transfer',this)">🔵 Transfer</button>
+        </div>
+        <div class="form-grid">
+          <div class="field"><label>Date</label><input type="date" id="f-date" style="width:100%;-webkit-appearance:none;appearance:none;"></div>
+          <div class="field"><label>Amount (₱)</label><input type="number" id="f-amount" placeholder="0.00" min="0" step="0.01" inputmode="decimal"></div>
+          <div class="field"><label id="lbl-acct">Account</label>
+            <select id="f-acct"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
+          </div>
+          <div class="field" id="f-acct2-wrap" style="display:none"><label>Transfer To</label>
+            <select id="f-acct2"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
+          </div>
+          <div class="field" id="f-cat-wrap"><label>Category</label><select id="f-cat"></select></div>
+          <div class="field" id="f-from-wrap"><label>Donor / From</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="f-from" placeholder="e.g. Juan dela Cruz"
+                autocomplete="off" oninput="acSearch(this.value)" onblur="acBlur()" onfocus="acSearch(this.value)">
+              <div class="autocomplete-list" id="ac-list"></div>
+            </div>
+          </div>
+          <div class="field"><label>Reference No.</label>
+            <input type="text" id="f-ref" placeholder="e.g. GCash ref #1234"></div>
+          <div class="field"><label>Recorded By</label>
+            <input type="text" id="f-by" placeholder="Officer name"></div>
+          <div class="field full"><label>Description</label>
+            <textarea id="f-desc" placeholder="Details..."></textarea></div>
+        </div>
+        <button class="btn-primary" onclick="addTxn()">Save Transaction</button>
+        <div class="ok-msg" id="ok-msg">✅ Transaction saved!</div>
+      </div>
+    </div>
+
+    <!-- LEDGER -->
+    <div id="sec-ledger" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Transaction Ledger</div>
+        <div class="tbl-controls">
+          <input type="text" id="l-search" placeholder="Search..." oninput="renderLedger()">
+          <select id="l-type" onchange="renderLedger()">
+            <option value="">All Types</option><option>income</option><option>expense</option><option>transfer</option>
+          </select>
+          <select id="l-acct" onchange="renderLedger()">
+            <option value="">All Accounts</option><option>GCash</option><option>EastWest</option><option>ChinaBank</option>
+          </select>
+          <select id="l-cat" onchange="renderLedger()"><option value="">All Categories</option></select>
+        </div>
+        <div class="chip-row" id="month-chips"></div>
+        <div id="ledger-body"></div>
+        <div class="tbl-empty" id="ledger-empty" style="display:none">No transactions found.</div>
+      </div>
+    </div>
+
+    <!-- CONTRIBUTORS -->
+    <div id="sec-contributors" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Contributor Directory</div>
+        <div class="stat-bar" id="contrib-stats"></div>
+        <div class="contrib-controls">
+          <input class="contrib-search" type="text" id="c-search" placeholder="Search name..." oninput="renderContribs()">
+          <select class="contrib-sort" id="c-sort" onchange="renderContribs()">
+            <option value="total">Highest Total</option>
+            <option value="count">Most Transactions</option>
+            <option value="recent">Most Recent</option>
+            <option value="alpha">Name A–Z</option>
+          </select>
+        </div>
+        <div class="contrib-grid" id="contrib-grid"></div>
+        <div class="tbl-empty" id="contrib-empty" style="display:none">No contributors found.</div>
+      </div>
+    </div>
+
+    <!-- PAYMENTS -->
+    <div id="sec-payments" style="display:none">
+      <div class="panel">
+        <div class="panel-title">💳 Pending Payment Approvals
+          <span id="firebase-status" style="font-size:11px;font-weight:400;color:#aaa;margin-left:8px"></span>
+        </div>
+        <div id="payments-list">
+          <div class="tbl-empty">Loading registrations...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIT -->
+    <div id="sec-audit" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Audit Trail</div>
+        <div id="audit-list"></div>
+        <div class="tbl-empty" id="audit-empty" style="display:none">No entries yet.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BOTTOM APP BAR ══ -->
+<div class="app-bar">
+  <button class="bar-btn active" id="bar-public" onclick="switchPage('public')">
+    <span class="bar-icon">📊</span>
+    <span class="bar-label">Public</span>
+  </button>
+  <button class="bar-btn auditor-btn" id="bar-auditor" onclick="tapRole('auditor')">
+    <span class="bar-icon">🔍</span>
+    <span class="bar-label">Auditor</span>
+  </button>
+  <button class="bar-btn treasurer-btn" id="bar-treasurer" onclick="tapRole('treasurer')">
+    <span class="bar-icon">💼</span>
+    <span class="bar-label">Treasurer</span>
+  </button>
+  <button class="bar-logout" id="bar-logout" style="display:none" onclick="doLogout()">
+    <span class="bar-icon">↩️</span>
+    <span class="bar-label">Exit</span>
+  </button>
+</div>
+
+<!-- ══ PIN MODAL ══ -->
+<div class="pin-modal-bg" id="pin-modal">
+  <div class="pin-modal">
+    <div class="pin-modal-title" id="pin-title">Enter PIN</div>
+    <div class="pin-modal-sub" id="pin-sub">Enter your PIN to continue</div>
+    <input class="pin-input" type="password" id="pin-in" maxlength="6"
+      placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="pin-actions">
+      <button class="btn-cancel-pin" onclick="closePinModal()">Cancel</button>
+      <button class="btn-enter" id="pin-enter-btn" onclick="doLogin()">Enter</button>
+    </div>
+    <div class="pin-err" id="pin-err"></div>
+    <div class="pin-note">🧪 Demo — Treasurer <code>1234</code> · Auditor <code>5678</code></div>
+  </div>
+</div>
+
+<!-- ══ CONTRIBUTOR MODAL ══ -->
+<div class="cmodal-bg" id="c-modal">
+  <div class="cmodal">
+    <div class="cmodal-header">
+      <div>
+        <div class="cmodal-title" id="cm-name"></div>
+        <div class="cmodal-sub"   id="cm-meta"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="cmodal-total" id="cm-total"></div>
+        <button class="btn-close" onclick="closeCModal()">×</button>
+      </div>
+    </div>
+    <div id="cm-txns"></div>
+  </div>
+</div>
+
+<!-- ══ DELETE MODAL ══ -->
+<div class="del-modal-bg" id="del-modal">
+  <div class="del-modal">
+    <div class="del-title">Delete Transaction?</div>
+    <div class="del-body" id="del-body"></div>
+    <div class="del-footer">
+      <button class="btn-cancel" onclick="closeDelModal()">Cancel</button>
+      <button class="btn-danger" onclick="doDelete()">Delete & Log</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── CONFIG ── */
+var CFG = {
+  pins: { treasurer:'1234', auditor:'5678' },
+  incCats: ['Donations','Sponsorships','Ticket Sales','Fundraising Activity','Registration Fee','Other Income'],
+  expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Miscellaneous Expense'],
+};
+
+var FIREBASE_CFG = {
+  apiKey: "AIzaSyBFNyMtQxUMtpNBjeM_L_SEeG_JU4OKtW8",
+  authDomain: "ssc-homecoming.firebaseapp.com",
+  projectId: "ssc-homecoming",
+  storageBucket: "ssc-homecoming.firebasestorage.app",
+  messagingSenderId: "719930850716",
+  appId: "1:719930850716:web:68ec1b939c6d00db26dc59"
+};
+
+/* ── STATE ── */
+var role = null, pendingRole = null, txnType = 'income', pendingDel = null, monthFilter = null;
+var db = null, allRegistrations = [], paymentFilter = 'pending';
+
+var TXN = [
+  { id:'s1',  created_at:'2026-03-15T08:00:00Z', txn_date:'2026-03-15', type:'income',   amount:10000, account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-001234',   recorded_by:'Maria Santos', contributor:'Batch 2005 Officers',        description:'Batch 2005 group collection' },
+  { id:'s2',  created_at:'2026-03-18T09:30:00Z', txn_date:'2026-03-18', type:'income',   amount:25000, account:'EastWest',  account_to:null,       category:'Sponsorships',         ref_no:'EW-TXN-5521', recorded_by:'Maria Santos', contributor:'ABC Corporation',             description:'Gold sponsor — check deposit' },
+  { id:'s3',  created_at:'2026-03-20T10:00:00Z', txn_date:'2026-03-20', type:'income',   amount:5000,  account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-001301',   recorded_by:'Jose Reyes',   contributor:'Ricardo Dela Cruz',          description:'Personal donation via GCash' },
+  { id:'s4',  created_at:'2026-03-22T14:00:00Z', txn_date:'2026-03-22', type:'income',   amount:15000, account:'EastWest',  account_to:null,       category:'Fundraising Activity', ref_no:'EW-TXN-5544', recorded_by:'Maria Santos', contributor:'Various Alumni',              description:'Raffle ticket sales — March' },
+  { id:'s5',  created_at:'2026-03-25T08:45:00Z', txn_date:'2026-03-25', type:'expense',  amount:8000,  account:'GCash',     account_to:null,       category:'Marketing',            ref_no:'GC-002100',   recorded_by:'Jose Reyes',   contributor:null,                         description:'Tarpaulin printing + social media' },
+  { id:'s6',  created_at:'2026-03-28T11:00:00Z', txn_date:'2026-03-28', type:'transfer', amount:10000, account:'GCash',     account_to:'EastWest', category:'Transfer',             ref_no:'GC-TRF-001',  recorded_by:'Maria Santos', contributor:null,                         description:'Fund consolidation to EastWest' },
+  { id:'s7',  created_at:'2026-04-01T09:00:00Z', txn_date:'2026-04-01', type:'income',   amount:37500, account:'EastWest',  account_to:null,       category:'Registration Fee',     ref_no:'EW-TXN-5590', recorded_by:'Maria Santos', contributor:'75 Registered Alumni',       description:'75 ticket reservations x P500' },
+  { id:'s8',  created_at:'2026-04-05T10:30:00Z', txn_date:'2026-04-05', type:'income',   amount:30000, account:'ChinaBank', account_to:null,       category:'Sponsorships',         ref_no:'CB-DEP-0042', recorded_by:'Ana Cruz',     contributor:'XYZ Trading Inc.',           description:'Silver sponsor — bank deposit' },
+  { id:'s9',  created_at:'2026-04-08T15:00:00Z', txn_date:'2026-04-08', type:'expense',  amount:12000, account:'EastWest',  account_to:null,       category:'Venue',                ref_no:'OR-VEN-001',  recorded_by:'Maria Santos', contributor:null,                         description:'Ballroom A reservation (50% down)' },
+  { id:'s10', created_at:'2026-04-10T09:00:00Z', txn_date:'2026-04-10', type:'expense',  amount:3500,  account:'GCash',     account_to:null,       category:'Supplies & Materials', ref_no:'GC-002210',   recorded_by:'Jose Reyes',   contributor:null,                         description:'Photo booth props, centerpieces, name tags' },
+  { id:'s11', created_at:'2026-04-12T11:00:00Z', txn_date:'2026-04-12', type:'income',   amount:12500, account:'GCash',     account_to:null,       category:'Ticket Sales',         ref_no:'GC-003001',   recorded_by:'Ana Cruz',     contributor:'Walk-in Attendees (25 pax)', description:'Walk-in ticket sales April 12' },
+  { id:'s12', created_at:'2026-04-15T14:00:00Z', txn_date:'2026-04-15', type:'expense',  amount:5000,  account:'ChinaBank', account_to:null,       category:'Communication',        ref_no:'CB-EXP-0011', recorded_by:'Ana Cruz',     contributor:null,                         description:'Souvenir booklet design & print' },
+  { id:'s13', created_at:'2026-04-18T10:00:00Z', txn_date:'2026-04-18', type:'income',   amount:8000,  account:'GCash',     account_to:null,       category:'Fundraising Activity', ref_no:'GC-003120',   recorded_by:'Maria Santos', contributor:'Online Bingo Players',        description:'Online bingo proceeds April 18' },
+  { id:'s14', created_at:'2026-04-20T09:30:00Z', txn_date:'2026-04-20', type:'transfer', amount:15000, account:'ChinaBank', account_to:'EastWest', category:'Transfer',             ref_no:'CB-TRF-002',  recorded_by:'Ana Cruz',     contributor:null,                         description:'Consolidating to EastWest for payments' },
+  { id:'s15', created_at:'2026-04-22T16:00:00Z', txn_date:'2026-04-22', type:'expense',  amount:18000, account:'EastWest',  account_to:null,       category:'Food & Beverage',      ref_no:'OR-CAT-001',  recorded_by:'Maria Santos', contributor:null,                         description:'Catering down (150 pax x P500 buffet, 50%)' },
+  { id:'s16', created_at:'2026-05-02T09:00:00Z', txn_date:'2026-05-02', type:'income',   amount:20000, account:'EastWest',  account_to:null,       category:'Ticket Sales',         ref_no:'EW-TXN-5800', recorded_by:'Jose Reyes',   contributor:'Final Batch (40 pax)',        description:'Final ticket sales — 40 slots' },
+  { id:'s17', created_at:'2026-05-05T10:00:00Z', txn_date:'2026-05-05', type:'expense',  amount:4500,  account:'GCash',     account_to:null,       category:'Decorations',          ref_no:'GC-004001',   recorded_by:'Ana Cruz',     contributor:null,                         description:'Flowers, balloon backdrop, entrance arch' },
+  { id:'s18', created_at:'2026-05-08T14:00:00Z', txn_date:'2026-05-08', type:'expense',  amount:6000,  account:'EastWest',  account_to:null,       category:'Honorarium',           ref_no:'EW-TXN-5844', recorded_by:'Maria Santos', contributor:null,                         description:'Host & emcee honorarium (2 persons)' },
+  { id:'s19', created_at:'2026-05-10T11:00:00Z', txn_date:'2026-05-10', type:'expense',  amount:2500,  account:'GCash',     account_to:null,       category:'Transportation',       ref_no:'GC-004210',   recorded_by:'Jose Reyes',   contributor:null,                         description:'Logistics & delivery of event materials' },
+  { id:'s20', created_at:'2026-05-12T09:00:00Z', txn_date:'2026-05-12', type:'income',   amount:5000,  account:'ChinaBank', account_to:null,       category:'Donations',            ref_no:'CB-DEP-0055', recorded_by:'Ana Cruz',     contributor:'Batch 2010 Officers',        description:'Late donation from Batch 2010' },
+  { id:'s21', created_at:'2026-05-14T09:00:00Z', txn_date:'2026-05-14', type:'income',   amount:3000,  account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-005010',   recorded_by:'Jose Reyes',   contributor:'Ricardo Dela Cruz',          description:'2nd donation — help cover venue' },
+  { id:'s22', created_at:'2026-05-15T10:00:00Z', txn_date:'2026-05-15', type:'income',   amount:10000, account:'EastWest',  account_to:null,       category:'Donations',            ref_no:'EW-TXN-5901', recorded_by:'Maria Santos', contributor:'ABC Corporation',            description:'ABC Corp additional support — 2nd tranche' },
+  { id:'s23', created_at:'2026-05-16T11:00:00Z', txn_date:'2026-05-16', type:'income',   amount:2000,  account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-005055',   recorded_by:'Ana Cruz',     contributor:'Ligaya Mendoza',             description:'Personal donation — Batch 2008 member' },
+  { id:'s24', created_at:'2026-05-18T14:00:00Z', txn_date:'2026-05-18', type:'income',   amount:5000,  account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-005100',   recorded_by:'Maria Santos', contributor:'Batch 2005 Officers',        description:'Batch 2005 2nd drive — additional collection' }
+];
+
+var AUDIT = [
+  { id:'a1', created_at:'2026-03-15T08:01:00Z', action:'add',    detail:'Added P10,000 income — Donations — GCash by Maria Santos',       done_by:'Maria Santos' },
+  { id:'a2', created_at:'2026-03-18T09:31:00Z', action:'add',    detail:'Added P25,000 income — Sponsorships — EastWest by Maria Santos', done_by:'Maria Santos' },
+  { id:'a3', created_at:'2026-04-08T15:01:00Z', action:'add',    detail:'Added P12,000 expense — Venue — EastWest by Maria Santos',       done_by:'Maria Santos' }
+];
+
+/* ── INIT ── */
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('f-date').value = today();
+  fillCats('income');
+  fillCatFilter();
+  renderPublic();
+  // Init Firebase in background immediately on load
+  setTimeout(initFirebase, 500);
+});
+
+function today()  { return new Date().toISOString().split('T')[0]; }
+function uid()    { return Math.random().toString(36).slice(2); }
+function fmt(n)   { return (+n||0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtMon(s){ var parts=s.split('-'); return new Date(parts[0], parts[1]-1).toLocaleString('en',{month:'short',year:'numeric'}); }
+function fmtDT(s) { return new Date(s).toLocaleString('en-PH', {dateStyle:'medium', timeStyle:'short'}); }
+function el(id)   { return document.getElementById(id); }
+function qs(id)   { var e=el(id); return e ? e.value || '' : ''; }
+
+function fillCats(type) {
+  var cats = type === 'income' ? CFG.incCats : CFG.expCats;
+  el('f-cat').innerHTML = cats.map(function(c){ return '<option>' + c + '</option>'; }).join('');
+}
+function fillCatFilter() {
+  var all = CFG.incCats.concat(CFG.expCats);
+  el('l-cat').innerHTML = '<option value="">All Categories</option>' +
+    all.map(function(c){ return '<option>' + c + '</option>'; }).join('');
+}
+
+/* ── PAGE SWITCHING ── */
+function switchPage(pg) {
+  var pages = document.querySelectorAll('.page');
+  for (var i=0; i<pages.length; i++) pages[i].classList.remove('active');
+  el('page-'+pg).classList.add('active');
+  window.scrollTo(0, 0);
+  var btns = document.querySelectorAll('.bar-btn');
+  for (var j=0; j<btns.length; j++) btns[j].classList.remove('active');
+  if (pg === 'public')    el('bar-public').classList.add('active');
+  if (pg === 'dashboard') {
+    var btn = role === 'treasurer' ? 'bar-treasurer' : 'bar-auditor';
+    el(btn).classList.add('active');
+  }
+}
+
+/* ── AUTH ── */
+function tapRole(r) {
+  if (role === r) { switchPage('dashboard'); return; }
+  pendingRole = r;
+  el('pin-title').textContent = r === 'treasurer' ? 'Treasurer Login' : 'Auditor Login';
+  el('pin-sub').textContent   = 'Enter your ' + r + ' PIN';
+  var btn = el('pin-enter-btn');
+  btn.textContent = 'Enter';
+  btn.className   = 'btn-enter' + (r === 'treasurer' ? ' green' : '');
+  el('pin-in').value = '';
+  el('pin-err').textContent = '';
+  el('pin-modal').classList.add('open');
+  setTimeout(function(){ el('pin-in').focus(); }, 100);
+}
+
+function doLogin() {
+  var pin = el('pin-in').value;
+  if (pin === CFG.pins[pendingRole]) {
+    role = pendingRole;
+    closePinModal();
+    renderAll();
+    switchPage('dashboard');
+    var badge = el('top-role-badge');
+    badge.innerHTML = '<span class="top-role-badge role-' + role + '">' + (role==='treasurer'?'Treasurer':'Auditor') + '</span>';
+    var addTab = el('tab-add');
+    if (role === 'auditor') { addTab.style.display = 'none'; goTab('ledger'); }
+    else                    { addTab.style.display = ''; goTab('add'); }
+    el('bar-logout').style.display = 'flex';
+    el('page-dashboard').scrollTop = 0;
+    window.scrollTo(0,0);
+    if (!db) initFirebase();
+  } else {
+    el('pin-err').textContent = 'Wrong PIN. Try again.';
+    el('pin-in').value = '';
+  }
+}
+function closePinModal() { el('pin-modal').classList.remove('open'); pendingRole = null; }
+
+function doLogout() {
+  role = null;
+  el('bar-logout').style.display = 'none';
+  switchPage('public');
+}
+
+/* ── TXN TYPE ── */
+function setType(t, btn) {
+  txnType = t;
+  var btns = document.querySelectorAll('.type-btn');
+  for (var i=0; i<btns.length; i++) btns[i].classList.remove('on');
+  btn.classList.add('on');
+  if (t === 'income') {
+    fillCats('income');
+    el('f-acct2-wrap').style.display = 'none';
+    el('f-cat-wrap').style.display   = 'flex';
+    el('f-from-wrap').style.display  = 'flex';
+    el('lbl-acct').textContent = 'Account';
+  } else if (t === 'expense') {
+    fillCats('expense');
+    el('f-acct2-wrap').style.display = 'none';
+    el('f-cat-wrap').style.display   = 'flex';
+    el('f-from-wrap').style.display  = 'none';
+    el('lbl-acct').textContent = 'Account Debited';
+  } else {
+    el('f-acct2-wrap').style.display = 'flex';
+    el('f-cat-wrap').style.display   = 'none';
+    el('f-from-wrap').style.display  = 'none';
+    el('lbl-acct').textContent = 'From Account';
+  }
+}
+
+/* ── ADD TXN ── */
+function addTxn() {
+  if (role === 'auditor') { alert('Auditors are read-only.'); return; }
+  var date   = qs('f-date');
+  var amount = parseFloat(qs('f-amount'));
+  var acct   = qs('f-acct');
+  var acct2  = qs('f-acct2');
+  var cat    = txnType !== 'transfer' ? qs('f-cat') : 'Transfer';
+  var from   = qs('f-from').trim();
+  var ref    = qs('f-ref').trim();
+  var by     = qs('f-by').trim();
+  var desc   = qs('f-desc').trim();
+  if (!date || !amount || amount <= 0) { alert('Enter a valid date and amount.'); return; }
+  if (txnType === 'transfer' && acct === acct2) { alert('From and To accounts must differ.'); return; }
+  var t = { id:uid(), created_at:new Date().toISOString(), txn_date:date, type:txnType,
+    amount:amount, account:acct, account_to:txnType==='transfer'?acct2:null, category:cat,
+    contributor:txnType==='income'?(from||null):null, ref_no:ref, recorded_by:by, description:desc };
+  TXN.unshift(t);
+  AUDIT.unshift({ id:uid(), created_at:new Date().toISOString(), action:'add',
+    detail:'Added P'+fmt(amount)+' '+txnType+' — '+cat+' — '+acct+(txnType==='transfer'?' to '+acct2:'')+' by '+(by||'?'),
+    done_by:by||'Unknown' });
+  el('f-amount').value = '';
+  el('f-from').value   = '';
+  el('f-ref').value    = '';
+  el('f-desc').value   = '';
+  el('f-date').value   = today();
+  el('ac-list').classList.remove('open');
+  var ok = el('ok-msg');
+  ok.style.display = 'block';
+  setTimeout(function(){ ok.style.display='none'; }, 3000);
+  renderAll();
+}
+
+/* ── RENDER ── */
+function renderAll() { renderLedger(); renderAudit(); renderContribs(); renderPublic(); }
+
+function calcBal() {
+  var b = { GCash:0, EastWest:0, ChinaBank:0 };
+  TXN.forEach(function(t) {
+    if (t.type==='income')    b[t.account] = (b[t.account]||0) + t.amount;
+    if (t.type==='expense')   b[t.account] = (b[t.account]||0) - t.amount;
+    if (t.type==='transfer') { b[t.account]=(b[t.account]||0)-t.amount; if(t.account_to) b[t.account_to]=(b[t.account_to]||0)+t.amount; }
+  });
+  return b;
+}
+
+/* ── PUBLIC ── */
+function renderPublic() {
+  var inc = 0, exp = 0, incCount = 0, expCount = 0, nonTransfer = 0, transfers = 0;
+  TXN.forEach(function(t) {
+    if (t.type==='income')   { inc += t.amount; incCount++; nonTransfer++; }
+    if (t.type==='expense')  { exp += t.amount; expCount++; nonTransfer++; }
+    if (t.type==='transfer') transfers++;
+  });
+  var b = calcBal();
+  el('pub-updated').textContent = 'As of ' + new Date().toLocaleString('en-PH');
+
+  el('pub-sum').innerHTML =
+    '<div class="sum-card net"><div class="s-label">Net Balance</div><div class="s-val">P'+fmt(inc-exp)+'</div><div class="s-sub">All accounts combined</div></div>' +
+    '<div class="sum-card"><div class="s-label">Total Raised</div><div class="s-val">P'+fmt(inc)+'</div><div class="s-sub">'+incCount+' entries</div></div>' +
+    '<div class="sum-card"><div class="s-label">Total Spent</div><div class="s-val">P'+fmt(exp)+'</div><div class="s-sub">'+expCount+' entries</div></div>' +
+    '<div class="sum-card"><div class="s-label">Transactions</div><div class="s-val">'+nonTransfer+'</div><div class="s-sub">'+transfers+' transfers</div></div>';
+
+  el('pub-accts').innerHTML = ['GCash','EastWest','ChinaBank'].map(function(a) {
+    return '<div class="acct-card '+a.toLowerCase()+'"><div class="a-name">'+a+'</div><div class="a-bal">P'+fmt(b[a]||0)+'</div></div>';
+  }).join('');
+
+  var incMap = {}, expMap = {};
+  TXN.forEach(function(t) {
+    if (t.type==='income')  incMap[t.category] = (incMap[t.category]||0) + t.amount;
+    if (t.type==='expense') expMap[t.category] = (expMap[t.category]||0) + t.amount;
+  });
+  el('pub-inc').innerHTML     = catTable(incMap, inc, 'income');
+  el('pub-exp').innerHTML     = catTable(expMap, exp, 'expense');
+
+  var contribs = buildContribMap().sort(function(a,b){ return b.total-a.total; }).slice(0,10);
+  var medals = ['🥇','🥈','🥉'];
+  el('pub-contribs').innerHTML = contribs.length ? contribs.map(function(c,i) {
+    return '<div class="pub-contrib-row">' +
+      '<div class="pub-contrib-rank">'+(i<3?medals[i]:i+1)+'</div>' +
+      '<div class="pub-contrib-name">'+c.name+'</div>' +
+      '<div class="pub-contrib-count">'+c.count+'x</div>' +
+      '<div class="pub-contrib-amt">+P'+fmt(c.total)+'</div>' +
+    '</div>';
+  }).join('') : '<p style="color:#aaa;font-size:13px">No contributors yet.</p>';
+}
+
+function catTable(obj, total, type) {
+  var rows = Object.keys(obj).map(function(k){ return [k, obj[k]]; }).sort(function(a,b){ return b[1]-a[1]; });
+  if (!rows.length) return '<p style="color:#aaa;font-size:13px;padding:8px">No data yet.</p>';
+  return rows.map(function(row) {
+    var cat=row[0], amt=row[1];
+    var pct = total > 0 ? (amt/total*100).toFixed(1)+'%' : '—';
+    var sign = type==='income' ? '+' : '−';
+    return '<div class="pub-cat-row">' +
+      '<div class="pub-cat-name"><span class="cat-pill">'+cat+'</span></div>' +
+      '<div class="pub-cat-amt '+type+'">'+sign+'P'+fmt(amt)+'</div>' +
+      '<div class="pub-cat-pct">'+pct+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── LEDGER ── */
+function renderLedger() {
+  var q  = qs('l-search').toLowerCase();
+  var ft = qs('l-type');
+  var fa = qs('l-acct');
+  var fc = qs('l-cat');
+
+  var months = [];
+  var seen = {};
+  TXN.forEach(function(t) {
+    if (t.txn_date) { var m=t.txn_date.slice(0,7); if(!seen[m]){ seen[m]=1; months.push(m); } }
+  });
+  months.sort().reverse();
+
+  el('month-chips').innerHTML =
+    '<span class="chip'+(monthFilter?'':' on')+'" onclick="setMonth(null,this)">All</span>' +
+    months.map(function(m) {
+      return '<span class="chip'+(monthFilter===m?' on':'')+'" onclick="setMonth(\''+m+'\',this)">'+fmtMon(m)+'</span>';
+    }).join('');
+
+  var rows = TXN.filter(function(t) {
+    if (ft && t.type !== ft) return false;
+    if (fa && t.account !== fa && t.account_to !== fa) return false;
+    if (fc && t.category !== fc) return false;
+    if (monthFilter && !(t.txn_date && t.txn_date.indexOf(monthFilter)===0)) return false;
+    if (q) {
+      var hay = [t.description,t.ref_no,t.recorded_by,t.category,t.account,t.contributor].join(' ').toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+
+  var body  = el('ledger-body');
+  var empty = el('ledger-empty');
+  if (!rows.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  var canDel = role === 'treasurer';
+  var signs = { income:'+', expense:'−', transfer:'↔' };
+
+  body.innerHTML = rows.map(function(t) {
+    var acctLabel = t.account + (t.type==='transfer' && t.account_to ? ' to ' + t.account_to : '');
+    var delBtn = canDel
+      ? '<button class="btn-del" onclick="triggerDel(\''+t.id+'\')">Delete</button>'
+      : '<span class="lock-icon">locked</span>';
+    return '<div class="lcard">' +
+      '<div class="lcard-row1">' +
+        '<div class="lcard-badges">' +
+          '<span class="type-tag '+t.type+'">'+t.type+'</span>' +
+          '<span class="cat-pill">'+(t.category||'—')+'</span>' +
+          '<span class="acct-tag">'+acctLabel+'</span>' +
+        '</div>' +
+        '<div class="lcard-amt '+t.type+'">'+(signs[t.type]||'')+'P'+fmt(t.amount)+'</div>' +
+      '</div>' +
+      '<div class="lcard-desc">'+(t.description||'No description')+'</div>' +
+      '<div class="lcard-meta">' +
+        '<span>'+t.txn_date+'</span>' +
+        '<span>Ref: '+(t.ref_no||'—')+'</span>' +
+        '<span>By: '+(t.recorded_by||'—')+'</span>' +
+      '</div>' +
+      (t.contributor ? '<div class="lcard-from">From: '+t.contributor+'</div>' : '') +
+      '<div class="lcard-footer">'+delBtn+'</div>' +
+    '</div>';
+  }).join('');
+}
+function setMonth(m,elem) {
+  monthFilter = m;
+  var chips = document.querySelectorAll('#month-chips .chip');
+  for (var i=0; i<chips.length; i++) chips[i].classList.remove('on');
+  elem.classList.add('on');
+  renderLedger();
+}
+
+/* ── CONTRIBUTORS ── */
+function buildContribMap() {
+  var map = {};
+  TXN.forEach(function(t) {
+    if (t.type==='income' && t.contributor) {
+      if (!map[t.contributor]) map[t.contributor] = { name:t.contributor, total:0, count:0, txns:[], last:'' };
+      map[t.contributor].total += t.amount;
+      map[t.contributor].count++;
+      map[t.contributor].txns.push(t);
+      if (!map[t.contributor].last || t.txn_date > map[t.contributor].last) map[t.contributor].last = t.txn_date;
+    }
+  });
+  return Object.keys(map).map(function(k){ return map[k]; });
+}
+
+function renderContribs() {
+  var all = buildContribMap().sort(function(a,b){ return b.total-a.total; });
+  var totalAmt = all.reduce(function(s,c){ return s+c.total; }, 0);
+  el('contrib-stats').innerHTML =
+    '<div class="stat-item"><div class="s-label">Contributors</div><div class="s-val">'+all.length+'</div></div>' +
+    '<div class="stat-item"><div class="s-label">Total Contributed</div><div class="s-val">P'+fmt(totalAmt)+'</div></div>' +
+    '<div class="stat-item"><div class="s-label">Average</div><div class="s-val">P'+fmt(all.length?totalAmt/all.length:0)+'</div></div>' +
+    '<div class="stat-item"><div class="s-label">Top Contributor</div><div class="s-val" style="font-size:12px">'+(all[0]?all[0].name:'—')+'</div></div>';
+
+  var q    = qs('c-search').toLowerCase();
+  var sort = qs('c-sort') || 'total';
+  var list = all.slice();
+  if (q) list = list.filter(function(c){ return c.name.toLowerCase().indexOf(q) !== -1; });
+  list.sort(function(a,b) {
+    if (sort==='total')  return b.total - a.total;
+    if (sort==='count')  return b.count - a.count;
+    if (sort==='recent') return b.last > a.last ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
+
+  var maxT  = list.length ? Math.max.apply(null, list.map(function(c){ return c.total; })) : 1;
+  var grid  = el('contrib-grid');
+  var empty = el('contrib-empty');
+  if (!list.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+
+  var medals = ['🥇','🥈','🥉'];
+  grid.innerHTML = list.map(function(c) {
+    var rank   = all.findIndex(function(x){ return x.name===c.name; }) + 1;
+    var rc     = rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
+    var rl     = rank<=3 ? medals[rank-1]+' #'+rank : '#'+rank;
+    var pct    = Math.round(c.total/maxT*100);
+    var safeId = c.name.replace(/'/g, "\\'");
+    return '<div class="contrib-card" onclick="openCModal(\'' + safeId + '\')">' +
+      '<div class="c-rank '+rc+'">'+rl+'</div>' +
+      '<div class="c-name">'+c.name+'</div>' +
+      '<div class="c-meta">'+c.count+' contribution'+(c.count>1?'s':'')+' · Last: '+c.last+'</div>' +
+      '<div class="c-total">P'+fmt(c.total)+'</div>' +
+      '<div class="c-bar-bg"><div class="c-bar" style="width:'+pct+'%"></div></div>' +
+    '</div>';
+  }).join('');
+}
+
+function openCModal(name) {
+  var all = buildContribMap().sort(function(a,b){ return b.total-a.total; });
+  var c   = all.find(function(x){ return x.name===name; });
+  if (!c) return;
+  var rank = all.findIndex(function(x){ return x.name===name; }) + 1;
+  el('cm-name').textContent  = name;
+  el('cm-meta').textContent  = 'Rank #'+rank+' · '+c.count+' contribution'+(c.count>1?'s':'')+' · Last: '+c.last;
+  el('cm-total').textContent = 'P'+fmt(c.total);
+  var sorted = c.txns.slice().sort(function(a,b){ return b.txn_date > a.txn_date ? 1 : -1; });
+  el('cm-txns').innerHTML = sorted.map(function(t) {
+    return '<div class="c-txn">' +
+      '<div>' +
+        '<div class="c-txn-date">'+t.txn_date+' · '+t.account+' · Ref: '+(t.ref_no||'—')+'</div>' +
+        '<div class="c-txn-desc">'+(t.description||'—')+'</div>' +
+        '<span class="c-txn-cat">'+t.category+'</span>' +
+      '</div>' +
+      '<div class="c-txn-amt">+P'+fmt(t.amount)+'</div>' +
+    '</div>';
+  }).join('');
+  el('c-modal').classList.add('open');
+}
+function closeCModal() { el('c-modal').classList.remove('open'); }
+
+/* ── AUDIT ── */
+function renderAudit() {
+  var list  = el('audit-list');
+  var empty = el('audit-empty');
+  if (!AUDIT.length) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = AUDIT.map(function(a) {
+    return '<div class="audit-item '+a.action+'">' +
+      '<div class="audit-meta">'+fmtDT(a.created_at)+' · '+(a.done_by||'System')+' · '+a.action.toUpperCase()+'</div>' +
+      '<div class="audit-desc">'+a.detail+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── DELETE ── */
+function triggerDel(id) {
+  if (role==='auditor') { alert('Auditors cannot delete.'); return; }
+  var t = TXN.find(function(x){ return x.id===id; });
+  if (!t) return;
+  pendingDel = id;
+  el('del-body').innerHTML = '<strong>P'+fmt(t.amount)+' — '+t.category+' — '+t.account+'</strong><br><span style="font-size:12px;color:#888">'+(t.description||'')+'</span><br><br>This will be permanently logged in the audit trail.';
+  el('del-modal').classList.add('open');
+}
+function closeDelModal() { el('del-modal').classList.remove('open'); pendingDel=null; }
+function doDelete() {
+  if (!pendingDel) return;
+  var t = TXN.find(function(x){ return x.id===pendingDel; });
+  TXN = TXN.filter(function(x){ return x.id!==pendingDel; });
+  AUDIT.unshift({ id:uid(), created_at:new Date().toISOString(), action:'delete',
+    detail:'DELETED P'+fmt(t.amount)+' '+t.type+' — '+t.category+' — '+t.account+' ('+t.txn_date+')',
+    done_by:'Treasurer' });
+  closeDelModal(); renderAll();
+}
+
+/* ── AUTOCOMPLETE ── */
+function acSearch(q) {
+  var list = el('ac-list');
+  if (!q || q.length < 2) { list.classList.remove('open'); return; }
+  var map = {};
+  TXN.forEach(function(t) {
+    if (t.type==='income' && t.contributor) {
+      var key = t.contributor.toLowerCase();
+      if (!map[key]) map[key] = { name:t.contributor, total:0, count:0 };
+      map[key].total += t.amount;
+      map[key].count++;
+    }
+  });
+  var qlo = q.toLowerCase();
+  var matches = Object.keys(map).map(function(k){ return map[k]; })
+    .filter(function(c){ return c.name.toLowerCase().indexOf(qlo) !== -1; })
+    .sort(function(a,b){ return b.total-a.total; })
+    .slice(0,5);
+
+  if (!matches.length) {
+    list.innerHTML = '<div class="ac-new">New contributor: "' + q + '"</div>';
+    list.classList.add('open'); return;
+  }
+  list.innerHTML = matches.map(function(c) {
+    var safe = c.name.replace(/'/g, "\\'");
+    return '<div class="ac-item" onmousedown="acSelect(\'' + safe + '\')">' +
+      '<div><div class="ac-name">'+c.name+'</div><div class="ac-meta">'+c.count+' previous donation'+(c.count>1?'s':'')+'</div></div>' +
+      '<div class="ac-total">P'+fmt(c.total)+'</div>' +
+    '</div>';
+  }).join('');
+  list.classList.add('open');
+}
+function acSelect(name) { el('f-from').value=name; el('ac-list').classList.remove('open'); }
+function acBlur() { setTimeout(function(){ el('ac-list').classList.remove('open'); }, 200); }
+
+/* ── FIREBASE PAYMENTS ── */
+function initFirebase() {
+  var status = el('firebase-status');
+  if (!status) return;
+  try {
+    if (typeof firebase === 'undefined') {
+      status.textContent = 'Offline (SDK not loaded)';
+      status.style.color = '#dc2626';
+      return;
+    }
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CFG);
+    db = firebase.firestore();
+    status.textContent = 'Connecting...';
+    status.style.color = '#f59e0b';
+    listenPayments();
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    status.textContent = 'Offline';
+    status.style.color = '#dc2626';
+  }
+}
+
+function listenPayments() {
+  if (!db) return;
+  var status = el('firebase-status');
+  db.collection('registrations').orderBy('createdAt','desc').onSnapshot(function(snap) {
+    if (status) { status.textContent = 'Live'; status.style.color = '#16a34a'; }
+    allRegistrations = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    renderPayments(); updatePaymentsBadge();
+  }, function(err) {
+    console.warn('Realtime failed, falling back to get():', err);
+    db.collection('registrations').get().then(function(snap) {
+      if (status) { status.textContent = 'Connected (no realtime)'; status.style.color = '#f59e0b'; }
+      allRegistrations = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+      renderPayments(); updatePaymentsBadge();
+    }).catch(function(e) {
+      if (status) { status.textContent = 'Offline'; status.style.color = '#dc2626'; }
+      console.error('Firestore get() failed:', e);
+    });
+  });
+}
+
+function updatePaymentsBadge() {
+  var pending = allRegistrations.filter(function(r){ return r.status==='pending'; }).length;
+  var badge = el('payments-badge');
+  if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline'; }
+  else badge.style.display = 'none';
+}
+
+function setPayFilter(f) { paymentFilter = f; renderPayments(); }
+
+function renderPayments() {
+  var pCount   = allRegistrations.filter(function(r){ return r.status==='pending'; }).length;
+  var apCount  = allRegistrations.filter(function(r){ return r.status==='paid'; }).length;
+  var rejCount = allRegistrations.filter(function(r){ return r.status==='rejected'; }).length;
+
+  var filtered = allRegistrations.filter(function(r) {
+    if (paymentFilter==='pending')  return r.status==='pending';
+    if (paymentFilter==='paid')     return r.status==='paid';
+    if (paymentFilter==='rejected') return r.status==='rejected';
+    return true;
+  });
+
+  var pEl = el('payments-list');
+  if (!db) {
+    pEl.innerHTML = '<div class="tbl-empty">Firebase not connected. Tap Payments tab again after internet loads.</div>';
+    return;
+  }
+  if (!allRegistrations.length) {
+    pEl.innerHTML = '<div class="tbl-empty">No registrations found.</div>';
+    return;
+  }
+
+  var filterHtml =
+    '<div class="p-filter-row">' +
+      '<button class="p-filter-btn'+(paymentFilter==='pending'?' on':'')+'" onclick="setPayFilter(\'pending\')">Pending ('+pCount+')</button>' +
+      '<button class="p-filter-btn'+(paymentFilter==='paid'?' on':'')+'" onclick="setPayFilter(\'paid\')">Approved ('+apCount+')</button>' +
+      '<button class="p-filter-btn'+(paymentFilter==='rejected'?' on':'')+'" onclick="setPayFilter(\'rejected\')">Rejected ('+rejCount+')</button>' +
+      '<button class="p-filter-btn'+(paymentFilter==='all'?' on':'')+'" onclick="setPayFilter(\'all\')">All ('+allRegistrations.length+')</button>' +
+    '</div>';
+
+  if (!filtered.length) {
+    pEl.innerHTML = filterHtml + '<div class="tbl-empty">No ' + paymentFilter + ' registrations.</div>';
+    return;
+  }
+
+  pEl.innerHTML = filterHtml + filtered.map(function(r) {
+    var name = ((r.firstName||'') + ' ' + (r.lastName||'')).trim() || 'Unknown';
+    var isPending = r.status === 'pending';
+    var statusCls = r.status==='paid'?'paid':r.status==='rejected'?'rejected':'pending';
+    var statusTxt = r.status==='paid'?'Approved':r.status==='rejected'?'Rejected':'Pending';
+    var gcashRef  = r.gcashRef || r.referenceNumber || r.paymentRef || r.gcash_ref || 'Not provided';
+    var safeId    = r.id.replace(/'/g,"\\'");
+    var safeName  = name.replace(/'/g,"\\'");
+    var dateStr   = '';
+    if (r.createdAt && r.createdAt.toDate) {
+      try { dateStr = r.createdAt.toDate().toLocaleString('en-PH'); } catch(e){}
+    } else if (r.createdAt) { dateStr = r.createdAt; }
+
+    return '<div class="pcard '+(r.status==='paid'?'approved':r.status==='rejected'?'rejected':'')+'">' +
+      '<div class="pcard-top">' +
+        '<div>' +
+          '<div class="pcard-name">'+name+'</div>' +
+          '<div class="pcard-batch">Batch '+(r.batch||'—')+' · '+(r.email||'—')+'</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div class="pcard-amount">P500.00</div>' +
+          '<span class="p-status-badge '+statusCls+'">'+statusTxt+'</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pcard-meta">' +
+        (r.phone||'—') + '<br>' +
+        'GCash Ref: <span class="pcard-ref">'+gcashRef+'</span><br>' +
+        (dateStr ? dateStr : '') +
+      '</div>' +
+      '<div class="pcard-actions">' +
+        (isPending ? '<button class="btn-approve" onclick="approvePayment(\''+safeId+'\',\''+safeName+'\')">Approve</button><button class="btn-reject" onclick="rejectPayment(\''+safeId+'\')">Reject</button>' : '') +
+        ((r.receiptUrl||r.receiptImage) ? '<button class="btn-receipt" onclick="viewReceipt(\''+(r.receiptUrl||r.receiptImage)+'\')">Receipt</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function approvePayment(regId, name) {
+  if (!db) return;
+  if (!confirm('Approve payment for ' + name + '?')) return;
+  db.collection('registrations').doc(regId).update({
+    status: 'paid',
+    approvedAt: new Date().toISOString(),
+    approvedBy: 'Fund Manager'
+  }).then(function() {
+    var txn = { id:uid(), created_at:new Date().toISOString(), txn_date:new Date().toISOString().split('T')[0],
+      type:'income', amount:500, account:'GCash', account_to:null, category:'Registration Fee',
+      contributor:name, ref_no:'SSA-REG-'+regId.slice(-6).toUpperCase(),
+      recorded_by:'Fund Manager (Auto)', description:'SSA Homecoming registration - ' + name };
+    TXN.unshift(txn);
+    AUDIT.unshift({ id:uid(), created_at:new Date().toISOString(), action:'add',
+      detail:'Auto-added P500 Registration Fee from '+name+' (SSA reg approved)', done_by:'Fund Manager' });
+    renderPublic();
+    showToast('Approved: ' + name + ' — P500 added to ledger');
+  }).catch(function(e) { alert('Error: ' + e.message); });
+}
+
+function rejectPayment(regId) {
+  if (!db) return;
+  var reason = prompt('Reason for rejection (optional):');
+  if (reason === null) reason = '';
+  db.collection('registrations').doc(regId).update({
+    status: 'rejected', rejectedAt: new Date().toISOString(), rejectionReason: reason
+  }).then(function() {
+    showToast('Registration rejected');
+  }).catch(function(e) { alert('Error: ' + e.message); });
+}
+
+function viewReceipt(url) {
+  el('receipt-img').src = url;
+  el('receipt-modal').classList.add('open');
+}
+function closeReceiptModal() { el('receipt-modal').classList.remove('open'); el('receipt-img').src=''; }
+
+function showToast(msg) {
+  var t = el('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.3)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.style.display='none'; }, 3500);
+}
+
+/* ── TABS ── */
+function goTab(tab) {
+  var all = ['add','ledger','contributors','audit','payments'];
+  all.forEach(function(t) {
+    var s = el('sec-'+t); if(s) s.style.display = t===tab?'block':'none';
+    var b = el('tab-'+t); if(b) b.classList.toggle('active', t===tab);
+  });
+  if (tab==='ledger')       renderLedger();
+  if (tab==='contributors') renderContribs();
+  if (tab==='audit')        renderAudit();
+  if (tab==='payments')     { if(!db) initFirebase(); renderPayments(); }
+}
+</script>
+</body>
+</html>
