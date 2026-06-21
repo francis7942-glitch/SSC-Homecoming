@@ -276,6 +276,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .p-status-badge.paid     { background: #dcfce7; color: #15803d; }
 .p-status-badge.rejected { background: #fee2e2; color: #b91c1c; }
 .p-filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.pcard-receipt { margin: 10px 0; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; cursor: pointer; position: relative; max-height: 200px; background: #f5f5f5; }
+.pcard-receipt img { width: 100%; max-height: 200px; object-fit: cover; display: block; }
+.pcard-receipt-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.5); color: #fff; font-size: 11px; text-align: center; padding: 4px; }
+.pcard-receipt-err { padding: 20px; text-align: center; color: #aaa; font-size: 12px; }
+.pcard-no-receipt { font-size: 12px; color: #bbb; font-style: italic; margin: 8px 0; padding: 12px; background: #f9f9f9; border-radius: 6px; text-align: center; }
 .p-filter-btn { padding: 6px 14px; border: 1.5px solid #ddd; border-radius: 20px; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; color: #555; }
 .p-filter-btn.on { background: #111; color: #fff; border-color: #111; }
 
@@ -1105,40 +1110,100 @@ function renderPayments() {
   }
 
   pEl.innerHTML = filterHtml + filtered.map(function(r) {
-    var name = ((r.firstName||'') + ' ' + (r.lastName||'')).trim() || 'Unknown';
-    var isPending = r.status === 'pending';
-    var statusCls = r.status==='paid'?'paid':r.status==='rejected'?'rejected':'pending';
-    var statusTxt = r.status==='paid'?'Approved':r.status==='rejected'?'Rejected':'Pending';
-    var gcashRef  = r.gcashRef || r.referenceNumber || r.paymentRef || r.gcash_ref || 'Not provided';
-    var safeId    = r.id.replace(/'/g,"\\'");
-    var safeName  = name.replace(/'/g,"\\'");
-    var dateStr   = '';
+    var name       = ((r.firstName||'') + ' ' + (r.lastName||'')).trim() || 'Unknown';
+    var isPending  = r.status === 'pending';
+    var statusCls  = r.status==='paid' ? 'paid' : r.status==='rejected' ? 'rejected' : 'pending';
+    var statusTxt  = r.status==='paid' ? 'Approved' : r.status==='rejected' ? 'Rejected' : 'Pending';
+    var gcashRef   = r.gcashRef || r.referenceNumber || r.paymentRef || r.gcash_ref || 'Not provided';
+    var receiptSrc = r.receiptImage || r.receiptUrl || r.receiptBase64 || r.receipt || r.gcashReceipt || r.paymentProof || '';
+    var hasReceipt = receiptSrc.length > 0;
+    var dateStr    = '';
     if (r.createdAt && r.createdAt.toDate) {
       try { dateStr = r.createdAt.toDate().toLocaleString('en-PH'); } catch(e){}
     } else if (r.createdAt) { dateStr = r.createdAt; }
+    // Determine fee
+    var regFee;
+    if (r.registrationFee)     regFee = r.registrationFee;
+    else if (r.amount)         regFee = r.amount;
+    else if (r.fee)            regFee = r.fee;
+    else {
+      var rd = '';
+      if (r.createdAt && r.createdAt.toDate) { try { rd = r.createdAt.toDate().toISOString().split('T')[0]; } catch(e){} }
+      else if (r.createdAt)   { rd = (r.createdAt+'').split('T')[0]; }
+      regFee = (rd && rd <= '2026-09-30') ? 850 : 1000;
+    }
 
-    return '<div class="pcard '+(r.status==='paid'?'approved':r.status==='rejected'?'rejected':'')+'">' +
-      '<div class="pcard-top">' +
-        '<div>' +
-          '<div class="pcard-name">'+name+'</div>' +
-          '<div class="pcard-batch">Batch '+(r.batch||'—')+' · '+(r.email||'—')+'</div>' +
-        '</div>' +
-        '<div style="text-align:right">' +
-          '<div class="pcard-amount">P500.00</div>' +
-          '<span class="p-status-badge '+statusCls+'">'+statusTxt+'</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="pcard-meta">' +
-        (r.phone||'—') + '<br>' +
-        'GCash Ref: <span class="pcard-ref">'+gcashRef+'</span><br>' +
-        (dateStr ? dateStr : '') +
-      '</div>' +
-      '<div class="pcard-actions">' +
-        (isPending ? '<button class="btn-approve" onclick="approvePayment(\''+safeId+'\',\''+safeName+'\')">Approve</button><button class="btn-reject" onclick="rejectPayment(\''+safeId+'\')">Reject</button>' : '') +
-        ((r.receiptUrl||r.receiptImage) ? '<button class="btn-receipt" onclick="viewReceipt(\''+(r.receiptUrl||r.receiptImage)+'\')">Receipt</button>' : '') +
-      '</div>' +
-    '</div>';
+    // Build card using data attributes — NO onclick quotes in HTML strings
+    var html = '<div class="pcard ' + (r.status==='paid' ? 'approved' : r.status==='rejected' ? 'rejected' : '') + '">';
+
+    // Top row: name + amount
+    html += '<div class="pcard-top">';
+    html +=   '<div>';
+    html +=     '<div class="pcard-name">' + name + '</div>';
+    html +=     '<div class="pcard-batch">Batch ' + (r.batch||'—') + ' · ' + (r.email||'—') + '</div>';
+    html +=   '</div>';
+    html +=   '<div style="text-align:right">';
+    html +=     '<div class="pcard-amount">P' + fmt(regFee) + '</div>';
+    html +=     '<span class="p-status-badge ' + statusCls + '">' + statusTxt + '</span>';
+    html +=     '<div style="font-size:10px;color:#888;margin-top:3px;">' + (regFee===850 ? 'Early Bird' : 'Regular Rate') + '</div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    // Meta info
+    html += '<div class="pcard-meta">';
+    html +=   (r.phone||'—') + '<br>';
+    html +=   'GCash Ref: <span class="pcard-ref">' + gcashRef + '</span><br>';
+    html +=   (dateStr ? dateStr : '');
+    html += '</div>';
+
+    // Receipt thumbnail — data-rid avoids all quote escaping
+    if (hasReceipt) {
+      html += '<div class="pcard-receipt" data-rid="' + r.id + '">';
+      html +=   '<img src="' + receiptSrc + '" alt="GCash Receipt" onerror="receiptImgError(this)">';
+      html +=   '<div class="pcard-receipt-label">Tap to enlarge</div>';
+      html += '</div>';
+    } else {
+      html += '<div class="pcard-no-receipt">No receipt image uploaded</div>';
+    }
+
+    // Action buttons — data attributes, no onclick
+    html += '<div class="pcard-actions">';
+    if (isPending) {
+      html += '<button class="btn-approve" data-rid="' + r.id + '" data-name="' + name.replace(/"/g, '&quot;') + '">Approve</button>';
+      html += '<button class="btn-reject"  data-rid="' + r.id + '">Reject</button>';
+    }
+    if (hasReceipt) {
+      html += '<button class="btn-receipt" data-rid="' + r.id + '">View Receipt</button>';
+    }
+    html += '</div>';
+
+    html += '</div>';
+    return html;
   }).join('');
+
+  // Attach click handlers via event delegation — no onclick in HTML
+  pEl.onclick = function(e) {
+    var t = e.target;
+    // Walk up to find a button or receipt div with data-rid
+    while (t && t !== pEl) {
+      var rid = t.getAttribute('data-rid');
+      if (rid) {
+        if (t.classList.contains('btn-approve')) {
+          approvePayment(rid, t.getAttribute('data-name') || '');
+          return;
+        }
+        if (t.classList.contains('btn-reject')) {
+          rejectPayment(rid);
+          return;
+        }
+        if (t.classList.contains('btn-receipt') || t.classList.contains('pcard-receipt')) {
+          viewReceipt(rid);
+          return;
+        }
+      }
+      t = t.parentNode;
+    }
+  };
 }
 
 function approvePayment(regId, name) {
@@ -1149,10 +1214,28 @@ function approvePayment(regId, name) {
     approvedAt: new Date().toISOString(),
     approvedBy: 'Fund Manager'
   }).then(function() {
-    var txn = { id:uid(), created_at:new Date().toISOString(), txn_date:new Date().toISOString().split('T')[0],
-      type:'income', amount:500, account:'GCash', account_to:null, category:'Registration Fee',
+    // Get fee from registration record
+  var regRecord = null;
+  for (var ri=0; ri<allRegistrations.length; ri++) {
+    if (allRegistrations[ri].id === regId) { regRecord = allRegistrations[ri]; break; }
+  }
+  var txnAmount = 1000; // default regular rate
+  if (regRecord) {
+    if (regRecord.registrationFee) txnAmount = regRecord.registrationFee;
+    else if (regRecord.amount) txnAmount = regRecord.amount;
+    else if (regRecord.fee) txnAmount = regRecord.fee;
+    else {
+      var rd = '';
+      if (regRecord.createdAt && regRecord.createdAt.toDate) {
+        try { rd = regRecord.createdAt.toDate().toISOString().split('T')[0]; } catch(e){}
+      } else if (regRecord.createdAt) { rd = (regRecord.createdAt+'').split('T')[0]; }
+      txnAmount = (rd && rd <= '2026-09-30') ? 850 : 1000;
+    }
+  }
+  var txn = { id:uid(), created_at:new Date().toISOString(), txn_date:new Date().toISOString().split('T')[0],
+      type:'income', amount:txnAmount, account:'GCash', account_to:null, category:'Registration Fee',
       contributor:name, ref_no:'SSA-REG-'+regId.slice(-6).toUpperCase(),
-      recorded_by:'Fund Manager (Auto)', description:'SSA Homecoming registration - ' + name };
+      recorded_by:'Fund Manager (Auto)', description:'SSA Homecoming registration - ' + name + ' (P'+txnAmount+')' };
     TXN.unshift(txn);
     AUDIT.unshift({ id:uid(), created_at:new Date().toISOString(), action:'add',
       detail:'Auto-added P500 Registration Fee from '+name+' (SSA reg approved)', done_by:'Fund Manager' });
@@ -1172,8 +1255,20 @@ function rejectPayment(regId) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 
-function viewReceipt(url) {
-  el('receipt-img').src = url;
+function receiptImgError(img) {
+  img.parentNode.innerHTML = '<div class="pcard-receipt-err">Image could not be loaded</div>';
+}
+
+function viewReceipt(regId) {
+  // Look up registration by ID — avoids putting giant base64 in onclick attribute
+  var reg = null;
+  for (var i=0; i<allRegistrations.length; i++) {
+    if (allRegistrations[i].id === regId) { reg = allRegistrations[i]; break; }
+  }
+  if (!reg) return;
+  var src = reg.receiptImage || reg.receiptUrl || reg.receiptBase64 || reg.receipt || reg.gcashReceipt || reg.paymentProof || '';
+  if (!src) { alert('No receipt image found for this registration.'); return; }
+  el('receipt-img').src = src;
   el('receipt-modal').classList.add('open');
 }
 function closeReceiptModal() { el('receipt-modal').classList.remove('open'); el('receipt-img').src=''; }
