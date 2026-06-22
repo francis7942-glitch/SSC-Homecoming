@@ -555,7 +555,7 @@ var FIREBASE_CFG = {
 
 /* ── STATE ── */
 var role = null, pendingRole = null, txnType = 'income', pendingDel = null, monthFilter = null;
-var db = null, allRegistrations = [], paymentFilter = 'pending';
+var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
 
 var TXN = [
   { id:'s1',  created_at:'2026-03-15T08:00:00Z', txn_date:'2026-03-15', type:'income',   amount:10000, account:'GCash',     account_to:null,       category:'Donations',            ref_no:'GC-001234',   recorded_by:'Maria Santos', contributor:'Batch 2005 Officers',        description:'Batch 2005 group collection' },
@@ -1198,6 +1198,7 @@ function renderPayments() {
 
     // Thumbnail
     if (hasReceipt) {
+      receiptCache[r.id] = receiptSrc;  // cache for viewReceipt
       html += '<div class="pcard-thumb-wrap" data-rid="' + r.id + '">';
       html +=   '<img src="' + receiptSrc + '" alt="Receipt" onerror="receiptImgError(this)">';
       html +=   '<div class="pcard-receipt-label">Tap</div>';
