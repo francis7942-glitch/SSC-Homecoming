@@ -326,6 +326,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 @media (min-width: 900px) {
   .contrib-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ── ACCOUNTS PASSBOOK ── */
+.acct-sel-btn { padding:9px 20px; border:2px solid #e0e0e0; border-radius:8px; background:#fff; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; color:#888; }
+.acct-sel-btn.active { background:#111; color:#fff; border-color:#111; }
+.acct-book-summary { display:flex; gap:16px; background:#f5f5f5; border-radius:8px; padding:12px 16px; margin-bottom:16px; flex-wrap:wrap; }
+.acct-book-summary .sb-item { display:flex; flex-direction:column; gap:2px; }
+.acct-book-summary .sb-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#888; }
+.acct-book-summary .sb-val { font-size:15px; font-weight:700; color:#111; font-family:monospace; }
+.acct-book-wrap { overflow-x:auto; }
+.acct-book-tbl { width:100%; border-collapse:collapse; font-size:13px; border:2px solid #ccc; }
+.acct-book-tbl th { padding:10px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#333; background:#e8e8e8; border:1px solid #bbb; white-space:nowrap; }
+.acct-book-tbl td { padding:10px 12px; border:1px solid #ddd; vertical-align:top; background:#fff; }
+.acct-book-tbl tr:nth-child(even) td { background:#f9f9f9; }
+.acct-book-tbl tr:hover td { background:#eef3ff; }
+.ab-date { font-size:12px; color:#666; white-space:nowrap; }
+.ab-desc { font-size:13px; color:#222; line-height:1.4; }
+.ab-cat  { font-size:10px; padding:1px 7px; border-radius:20px; background:#e8e8e8; color:#555; font-weight:600; display:inline-block; margin-top:3px; }
+.ab-ref  { font-size:11px; font-family:monospace; color:#aaa; white-space:nowrap; }
+.ab-credit { font-family:monospace; font-weight:700; color:#16a34a; white-space:nowrap; }
+.ab-debit  { font-family:monospace; font-weight:700; color:#dc2626; white-space:nowrap; }
+.ab-bal    { font-family:monospace; font-weight:700; color:#111; white-space:nowrap; }
+.ab-bal.neg { color:#dc2626; }
+.ab-transfer-tag { font-size:10px; background:#dbeafe; color:#1d4ed8; padding:1px 6px; border-radius:4px; font-weight:600; display:inline-block; margin-top:3px; }
 </style>
 </head>
 <body>
@@ -366,6 +389,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button class="sec-tab" id="tab-add"          onclick="goTab('add')">+ Add</button>
       <button class="sec-tab active" id="tab-ledger" onclick="goTab('ledger')">📋 Ledger</button>
       <button class="sec-tab"        id="tab-contributors"  onclick="goTab('contributors')">👥 Contributors</button>
+      <button class="sec-tab"        id="tab-accounts"      onclick="goTab('accounts')">🏦 Accounts</button>
       <button class="sec-tab"        id="tab-audit"         onclick="goTab('audit')">🔍 Audit Log</button>
       <button class="sec-tab"        id="tab-payments"      onclick="goTab('payments')">💳 Payments <span id="payments-badge" style="display:none;background:#dc2626;color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;margin-left:4px;font-weight:700"></span></button>
     </div>
@@ -425,6 +449,35 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <div class="chip-row" id="month-chips"></div>
         <div id="ledger-body"></div>
         <div class="tbl-empty" id="ledger-empty" style="display:none">No transactions found.</div>
+      </div>
+    </div>
+
+    <!-- ACCOUNTS -->
+    <div id="sec-accounts" style="display:none">
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <button class="acct-sel-btn active" id="asel-GCash"     onclick="selectAcct('GCash')">GCash</button>
+        <button class="acct-sel-btn"        id="asel-EastWest"  onclick="selectAcct('EastWest')">EastWest</button>
+        <button class="acct-sel-btn"        id="asel-ChinaBank" onclick="selectAcct('ChinaBank')">ChinaBank</button>
+      </div>
+      <div class="panel" id="acct-book-panel">
+        <div class="panel-title" id="acct-book-title">GCash Passbook</div>
+        <div class="acct-book-summary" id="acct-book-summary"></div>
+        <div class="acct-book-wrap">
+          <table class="acct-book-tbl">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Ref</th>
+                <th style="text-align:right">Credit (+)</th>
+                <th style="text-align:right">Debit (−)</th>
+                <th style="text-align:right">Balance</th>
+              </tr>
+            </thead>
+            <tbody id="acct-book-body"></tbody>
+          </table>
+        </div>
+        <div class="tbl-empty" id="acct-book-empty" style="display:none">No transactions for this account.</div>
       </div>
     </div>
 
@@ -1028,6 +1081,82 @@ function acSearch(q) {
 function acSelect(name) { el('f-from').value=name; el('ac-list').classList.remove('open'); }
 function acBlur() { setTimeout(function(){ el('ac-list').classList.remove('open'); }, 200); }
 
+/* ── ACCOUNTS PASSBOOK ── */
+var selectedAcct = 'GCash';
+
+function selectAcct(acct) {
+  selectedAcct = acct;
+  var btns = document.querySelectorAll('.acct-sel-btn');
+  for (var i=0; i<btns.length; i++) btns[i].classList.remove('active');
+  el('asel-'+acct).classList.add('active');
+  renderPassbook();
+}
+
+function renderPassbook() {
+  var acct = selectedAcct;
+  el('acct-book-title').textContent = acct + ' Passbook';
+
+  // Get all transactions touching this account, sorted oldest first
+  var rows = TXN.filter(function(t) {
+    return t.account === acct || t.account_to === acct;
+  }).slice().sort(function(a,b) {
+    return a.txn_date > b.txn_date ? 1 : a.txn_date < b.txn_date ? -1 : 0;
+  });
+
+  // Summary stats
+  var totalIn  = 0, totalOut = 0;
+  rows.forEach(function(t) {
+    if (t.type === 'income')                              totalIn  += t.amount;
+    if (t.type === 'expense')                             totalOut += t.amount;
+    if (t.type === 'transfer' && t.account === acct)     totalOut += t.amount;
+    if (t.type === 'transfer' && t.account_to === acct)  totalIn  += t.amount;
+  });
+  var endBal = totalIn - totalOut;
+
+  el('acct-book-summary').innerHTML =
+    '<div class="sb-item"><div class="sb-label">Current Balance</div><div class="sb-val" style="color:' + (endBal>=0?'#16a34a':'#dc2626') + '">P'+fmt(endBal)+'</div></div>' +
+    '<div class="sb-item"><div class="sb-label">Total In</div><div class="sb-val" style="color:#16a34a">+P'+fmt(totalIn)+'</div></div>' +
+    '<div class="sb-item"><div class="sb-label">Total Out</div><div class="sb-val" style="color:#dc2626">−P'+fmt(totalOut)+'</div></div>' +
+    '<div class="sb-item"><div class="sb-label">Transactions</div><div class="sb-val">'+rows.length+'</div></div>';
+
+  var body  = el('acct-book-body');
+  var empty = el('acct-book-empty');
+
+  if (!rows.length) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  var runBal = 0;
+  body.innerHTML = rows.map(function(t) {
+    var isCredit = (t.type === 'income') || (t.type === 'transfer' && t.account_to === acct);
+    var isDebit  = (t.type === 'expense') || (t.type === 'transfer' && t.account === acct);
+    var amt = t.amount;
+    if (isCredit) runBal += amt;
+    if (isDebit)  runBal -= amt;
+
+    var creditCell = isCredit ? '<span class="ab-credit">+P'+fmt(amt)+'</span>' : '<span style="color:#ddd">—</span>';
+    var debitCell  = isDebit  ? '<span class="ab-debit">−P'+fmt(amt)+'</span>' : '<span style="color:#ddd">—</span>';
+    var balClass   = runBal < 0 ? 'ab-bal neg' : 'ab-bal';
+
+    var descHtml = '<div class="ab-desc">' + (t.description||'—') + '</div>';
+    if (t.type === 'transfer') {
+      var arrow = t.account === acct ? 'To: '+t.account_to : 'From: '+t.account;
+      descHtml += '<span class="ab-transfer-tag">Transfer '+arrow+'</span>';
+    } else {
+      descHtml += '<span class="ab-cat">' + (t.category||'—') + '</span>';
+    }
+    if (t.recorded_by) descHtml += '<div style="font-size:10px;color:#bbb;margin-top:2px">By: '+t.recorded_by+'</div>';
+
+    return '<tr>' +
+      '<td><div class="ab-date">'+t.txn_date+'</div></td>' +
+      '<td>' + descHtml + '</td>' +
+      '<td><span class="ab-ref">' + (t.ref_no||'—') + '</span></td>' +
+      '<td style="text-align:right">' + creditCell + '</td>' +
+      '<td style="text-align:right">' + debitCell  + '</td>' +
+      '<td class="' + balClass + '">P'+fmt(runBal)+'</td>' +
+    '</tr>';
+  }).join('');
+}
+
 /* ── FIREBASE PAYMENTS ── */
 function initFirebase() {
   var status = el('firebase-status');
@@ -1283,9 +1412,9 @@ function approvePayment(regId, name) {
       recorded_by:'Fund Manager (Auto)', description:'SSA Homecoming registration - ' + name + ' (P'+txnAmount+')' };
     TXN.unshift(txn);
     AUDIT.unshift({ id:uid(), created_at:new Date().toISOString(), action:'add',
-      detail:'Auto-added P500 Registration Fee from '+name+' (SSA reg approved)', done_by:'Fund Manager' });
+      detail:'Auto-added P'+txnAmount+' Registration Fee — GCash — from '+name+' (SSA reg approved)', done_by:'Fund Manager' });
     renderPublic();
-    showToast('Approved: ' + name + ' — P500 added to ledger');
+    showToast('Approved: ' + name + ' — P'+txnAmount+' added to GCash ledger');
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 
@@ -1346,7 +1475,7 @@ function showToast(msg) {
 
 /* ── TABS ── */
 function goTab(tab) {
-  var all = ['add','ledger','contributors','audit','payments'];
+  var all = ['add','ledger','accounts','contributors','audit','payments'];
   all.forEach(function(t) {
     var s = el('sec-'+t); if(s) s.style.display = t===tab?'block':'none';
     var b = el('tab-'+t); if(b) b.classList.toggle('active', t===tab);
@@ -1354,6 +1483,7 @@ function goTab(tab) {
   if (tab==='ledger')       renderLedger();
   if (tab==='contributors') renderContribs();
   if (tab==='audit')        renderAudit();
+  if (tab==='accounts')     renderPassbook();
   if (tab==='payments')     { if(!db) initFirebase(); renderPayments(); }
 }
 </script>
