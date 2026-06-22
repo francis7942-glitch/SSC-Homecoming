@@ -273,7 +273,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .p-status-badge.paid     { background: #dcfce7; color: #15803d; }
 .p-status-badge.rejected { background: #fee2e2; color: #b91c1c; }
 .pcard-body { display: flex; gap: 12px; align-items: flex-start; }
-.pcard-thumb-wrap { flex-shrink: 0; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; cursor: pointer; background: #f5f5f5; position: relative; }
+.pcard-thumb-wrap { flex-shrink: 0; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; background: #f5f5f5; position: relative; pointer-events: none; }
 .pcard-thumb-wrap img { width: 80px; height: 80px; object-fit: cover; display: block; }
 .pcard-receipt-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 9px; text-align: center; padding: 3px; }
 .pcard-receipt-err { font-size: 10px; color: #aaa; text-align: center; padding: 8px 4px; }
@@ -1198,10 +1198,8 @@ function renderPayments() {
 
     // Thumbnail
     if (hasReceipt) {
-      receiptCache[r.id] = receiptSrc;  // cache for viewReceipt
-      html += '<div class="pcard-thumb-wrap" data-rid="' + r.id + '">';
-      html +=   '<img src="' + receiptSrc + '" alt="Receipt" onerror="receiptImgError(this)">';
-      html +=   '<div class="pcard-receipt-label">Tap</div>';
+      html += '<div class="pcard-thumb-wrap">';
+      html +=   '<img id="ri-' + r.id + '" src="' + receiptSrc + '" alt="Receipt" onerror="receiptImgError(this)">';
       html += '</div>';
     } else {
       html += '<div class="pcard-no-thumb"><div class="pcard-no-thumb-txt">No receipt</div></div>';
@@ -1219,7 +1217,7 @@ function renderPayments() {
     }
     html +=   '</div>';
     if (hasReceipt) {
-      html += '<button class="btn-receipt" data-rid="' + r.id + '" style="align-self:flex-start">View Full Receipt</button>';
+      html += '<button class="btn-receipt" onclick="openLightbox(\'' + r.id + '\')">View Full Receipt</button>';
     }
     html += '</div>';
 
@@ -1306,19 +1304,31 @@ function receiptImgError(img) {
   img.parentNode.innerHTML = '<div class="pcard-receipt-err">Image could not be loaded</div>';
 }
 
-function viewReceipt(regId) {
-  // Look up registration by ID — avoids putting giant base64 in onclick attribute
+function openLightbox(regId) {
   var reg = null;
   for (var i=0; i<allRegistrations.length; i++) {
     if (allRegistrations[i].id === regId) { reg = allRegistrations[i]; break; }
   }
-  if (!reg) return;
-  var src = reg.receiptImage || reg.receiptUrl || reg.receiptBase64 || reg.receipt || reg.gcashReceipt || reg.paymentProof || '';
-  if (!src) { alert('No receipt image found for this registration.'); return; }
-  el('receipt-img').src = src;
-  el('receipt-modal').classList.add('open');
+  if (!reg) { alert('Registration not found.'); return; }
+  var src = reg.receiptImg || '';
+  if (!src) {
+    // Scan all fields for image data
+    var keys = Object.keys(reg);
+    for (var k=0; k<keys.length; k++) {
+      var v = reg[keys[k]];
+      if (typeof v === 'string' && v.length > 100 && v.indexOf('data:image') === 0) { src = v; break; }
+    }
+  }
+  if (!src) { alert('No receipt image for this registration.'); return; }
+  document.getElementById('lb-name').textContent = (reg.firstName||'') + ' ' + (reg.lastName||'');
+  document.getElementById('lb-img').src = src;
+  document.getElementById('lb-download').href = src;
+  document.getElementById('lightbox').style.display = 'flex';
 }
-function closeReceiptModal() { el('receipt-modal').classList.remove('open'); el('receipt-img').src=''; }
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+  document.getElementById('lb-img').src = '';
+}
 
 function showToast(msg) {
   var t = el('toast');
@@ -1347,5 +1357,25 @@ function goTab(tab) {
   if (tab==='payments')     { if(!db) initFirebase(); renderPayments(); }
 }
 </script>
+
+<!-- LIGHTBOX (SSA style) -->
+<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:16px;" onclick="closeLightbox()">
+  <div style="background:#fff;border-radius:14px;overflow:hidden;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);" onclick="event.stopPropagation()">
+    <div style="background:#1a1a1a;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="color:#c8a84b;font-size:14px;font-weight:700;">GCash Receipt</div>
+        <div id="lb-name" style="color:rgba(255,255,255,.55);font-size:12px;margin-top:2px;"></div>
+      </div>
+      <button onclick="closeLightbox()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+    </div>
+    <div style="background:#f5f0e8;padding:16px;text-align:center;">
+      <img id="lb-img" style="max-width:100%;max-height:60vh;border-radius:8px;display:block;margin:0 auto;" src="">
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid #e0e0e0;display:flex;justify-content:flex-end;gap:8px;background:#fdfcf9;">
+      <button onclick="closeLightbox()" style="padding:9px 18px;background:none;border:1.5px solid #ddd;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;color:#444;">Close</button>
+      <a id="lb-download" download="gcash-receipt.jpg" style="padding:9px 18px;background:#1a1a1a;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">⬇ Download</a>
+    </div>
+  </div>
+</div>
 </body>
 </html>
