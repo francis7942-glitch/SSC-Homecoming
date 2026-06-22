@@ -217,6 +217,28 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
 
 /* QR canvas */
 .qr-canvas{display:block}
+.reg-type-toggle{display:flex;background:var(--cream2);padding:3px;border-radius:9px;margin-bottom:1.1rem}
+.reg-type-btn{flex:1;padding:8px 4px;text-align:center;border-radius:7px;border:none;font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:var(--muted)}
+.reg-type-btn.on{background:#fff;color:var(--navy);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.group-total{background:linear-gradient(135deg,var(--navy),#162447);border-radius:10px;padding:1rem 1.1rem;display:flex;justify-content:space-between;align-items:center;margin:.85rem 0}
+.group-total-lbl{color:rgba(255,255,255,.55);font-size:.72rem}
+.group-total-amt{color:var(--gold);font-size:1.5rem;font-weight:700;font-family:'Cormorant Garamond',serif;line-height:1}
+.group-total-sub{color:rgba(255,255,255,.35);font-size:.68rem;margin-top:2px}
+.slot-list{display:flex;flex-direction:column;gap:.4rem;max-height:320px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.slot-item{display:flex;align-items:center;gap:.6rem;background:#fdfcf9;border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem}
+.slot-num{width:24px;height:24px;border-radius:50%;background:var(--navy);color:var(--gold);font-size:.68rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.slot-id{font-family:monospace;font-size:.75rem;color:var(--navy);font-weight:700}
+.slot-name{font-size:.72rem;color:var(--muted)}
+.slot-name.assigned{color:var(--green);font-weight:600}
+.slot-assign-btn{margin-left:auto;font-size:.68rem;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'Outfit',sans-serif;text-decoration:underline;flex-shrink:0}
+.group-done-header{text-align:center;padding:.5rem 0 .9rem}
+.stepper-a{display:flex;align-items:center;gap:0;border:1.5px solid var(--gold);border-radius:10px;overflow:hidden;margin-bottom:.5rem}
+.stepper-a button{width:56px;height:56px;border:none;background:var(--navy);color:var(--gold);font-size:1.6rem;font-weight:500;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.stepper-a button:active{background:#162447}
+.qty-val{flex:1;text-align:center;font-size:1.7rem;font-weight:700;color:var(--navy);font-family:'Cormorant Garamond',serif;background:#fff;height:56px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.stepper-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:.5rem}
+.stepper-quick button{padding:7px 0;border:1px solid var(--border);border-radius:7px;background:var(--cream2);color:var(--navy);font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;-webkit-tap-highlight-color:transparent}
+.stepper-quick button:active{background:var(--cream)}
 
 @media(max-width:380px){.row2{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.brand small{display:none}}
   </style>
@@ -255,6 +277,14 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
       </div>
       <!-- Step 1: Details -->
       <div id="reg-step1" class="card">
+        <!-- Registration type toggle -->
+        <div class="reg-type-toggle">
+          <button class="reg-type-btn on" id="type-individual" onclick="setRegType('individual')">👤 Individual</button>
+          <button class="reg-type-btn" id="type-group" onclick="setRegType('group')">👥 Group / Batch</button>
+        </div>
+
+        <!-- INDIVIDUAL FORM -->
+        <div id="individual-form">
         <span class="card-head">Your Information</span>
         <div class="row2">
           <div class="fg"><label>First Name</label><input id="r-fname" placeholder="Maria"/></div>
@@ -264,6 +294,44 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
         <div class="fg"><label>Email Address</label><input id="r-email" type="email" placeholder="maria@email.com"/><div class="hint">Your QR code will be emailed here.</div></div>
         <div class="fg"><label>Mobile Number</label><input id="r-phone" placeholder="09XX-XXX-XXXX"/></div>
         <div id="reg-err" class="alert a-err" style="display:none">Please fill in all fields correctly.</div>
+        </div><!-- end individual-form -->
+
+        <!-- GROUP FORM -->
+        <div id="group-form" style="display:none">
+        <span class="card-head">Group / Batch Registration</span>
+        <div class="alert a-info" style="margin-bottom:.9rem">Reserve slots now — assign individual names anytime before the event.</div>
+        <div class="fg"><label>Batch Year</label><input id="g-batch" type="number" placeholder="e.g. 2002" min="1950" max="2030"/></div>
+        <div class="row2">
+          <div class="fg"><label>Representative First Name</label><input id="g-fname" placeholder="Maria"/></div>
+          <div class="fg"><label>Representative Last Name</label><input id="g-lname" placeholder="Santos"/></div>
+        </div>
+        <div class="fg"><label>Representative Email</label><input id="g-email" type="email" placeholder="batch2002@gmail.com"/><div class="hint">All QR codes sent here.</div></div>
+        <div class="fg"><label>Representative Mobile</label><input id="g-phone" placeholder="09XX-XXX-XXXX"/></div>
+        <div class="fg">
+          <label>Number of Guests</label>
+          <div class="stepper-a">
+            <button onclick="changeQty(-1)">−</button>
+            <div class="qty-val" id="g-qty-display">10</div>
+            <button onclick="changeQty(1)">+</button>
+          </div>
+          <div class="stepper-quick">
+            <button onclick="changeQty(10)">+10</button>
+            <button onclick="changeQty(25)">+25</button>
+            <button onclick="changeQty(50)">+50</button>
+            <button onclick="changeQty(100)">+100</button>
+          </div>
+          <input type="hidden" id="g-qty" value="10"/>
+        </div>
+        <div class="group-total" id="group-total-preview">
+          <div>
+            <div class="group-total-lbl">Total Amount Due</div>
+            <div class="group-total-amt" id="group-total-amt">₱8,500</div>
+            <div class="group-total-sub" id="group-total-sub">10 guests × ₱850 (early bird)</div>
+          </div>
+          <div id="group-eb-badge" style="background:var(--gold);color:var(--navy);font-size:.68rem;font-weight:700;padding:4px 10px;border-radius:100px">🐦 Early Bird</div>
+        </div>
+        <div id="group-err" class="alert a-err" style="display:none">Please fill in all fields correctly.</div>
+        </div><!-- end group-form -->
         <div id="fee-preview" style="background:#f5f0e8;border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:.85rem">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div>
@@ -274,7 +342,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           </div>
           <div id="fee-preview-note" style="margin-top:5px;font-size:.72rem;color:var(--muted)"></div>
         </div>
-        <button class="btn btn-navy btn-full" onclick="regNext()">Continue to Payment →</button>
+        <button class="btn btn-navy btn-full" id="reg-next-btn" onclick="regNextHandler()">Continue to Payment →</button>
       </div>
       <!-- Step 2: Payment -->
       <div id="reg-step2" class="card" style="display:none">
@@ -288,7 +356,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <div style="font-size:.72rem;opacity:.7;margin-top:.35rem">Registration Fee</div>
           <div class="gcash-amount" id="gcash-amount-display">₱1,000.00</div>
           <div id="gcash-early-bird" style="font-size:.72rem;background:rgba(255,255,255,.2);border-radius:100px;padding:3px 10px;margin-top:4px;display:none">🐦 Early Bird Rate</div>
-          <div class="gcash-tip">💬 Put your full name as the GCash message/note</div>
+          <div class="gcash-tip" id="gcash-tip-msg">💬 Put your full name as the GCash message/note</div>
           <div id="gcash-tip-earlybird" style="font-size:.68rem;opacity:.75;margin-top:4px;display:none">⏰ Early bird rate ends September 30, 2026</div>
         </div>
         <p style="font-size:.82rem;color:var(--muted);margin-bottom:.85rem">After sending, screenshot your receipt and upload it below.</p>
@@ -303,7 +371,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <button class="btn btn-navy" style="flex:1" id="reg-submit-btn" onclick="regSubmit()">Submit Registration ✓</button>
         </div>
       </div>
-      <!-- Step 3: Done -->
+      <!-- Step 3: Done (Individual) -->
       <div id="reg-step3" class="card" style="display:none">
         <div class="success-wrap">
           <div style="font-size:3rem;margin-bottom:.6rem">🎓</div>
@@ -316,6 +384,22 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <div class="alert a-info" style="margin-top:1rem;text-align:left">ℹ️ <strong>Next:</strong> Our team will verify your GCash payment before the event.</div>
           <button class="btn btn-navy btn-full" onclick="regReset()" style="margin-top:.4rem">Register Another Guest</button>
         </div>
+      </div>
+
+      <!-- Step 3: Done (Group) -->
+      <div id="reg-step3-group" class="card" style="display:none">
+        <div class="group-done-header">
+          <div style="font-size:2.5rem;margin-bottom:.5rem">🎉</div>
+          <h2 style="font-family:'Cormorant Garamond',serif;font-size:1.45rem;color:var(--navy);margin-bottom:.2rem"><span id="g-done-count"></span> Slots Reserved!</h2>
+          <p style="color:var(--muted);font-size:.8rem;margin:.3rem 0 0">Batch <span id="g-done-batch"></span> · Assign names anytime before Feb 6, 2027</p>
+        </div>
+        <div class="alert a-ok" style="margin-bottom:.9rem">✅ Payment submitted. Slots will be activated once payment is confirmed.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
+          <span style="font-weight:700;color:var(--navy);font-size:.86rem">Generated QR Slots</span>
+          <span class="badge b-pend" id="g-assign-count">0 assigned</span>
+        </div>
+        <div class="slot-list" id="group-slot-list"></div>
+        <button class="btn btn-navy btn-full" onclick="regReset()" style="margin-top:1rem">Register Another Group</button>
       </div>
     </div>
   </div>
@@ -560,6 +644,184 @@ const SEED_CANDIDATES = [
 ];
 
 const genId = () => 'SSC-' + Date.now().toString(36).toUpperCase().slice(-4) + Math.random().toString(36).slice(2,5).toUpperCase();
+const genGroupId = (batch, n) => 'SSC-B' + batch + '-' + String(n).padStart(3,'0');
+
+// ── GROUP REGISTRATION STATE ─────────────────────────────────────────
+let regMode = 'individual'; // 'individual' | 'group'
+let groupQty = 10;
+let groupSlots = []; // generated slot IDs
+
+function setRegType(type) {
+  regMode = type;
+  document.getElementById('individual-form').style.display = type==='individual'?'block':'none';
+  document.getElementById('group-form').style.display     = type==='group'?'block':'none';
+  document.getElementById('type-individual').className = 'reg-type-btn'+(type==='individual'?' on':'');
+  document.getElementById('type-group').className      = 'reg-type-btn'+(type==='group'?' on':'');
+  if(type==='group') updateGroupTotal();
+}
+
+function changeQty(delta) {
+  groupQty = Math.max(1, Math.min(500, groupQty + delta));
+  document.getElementById('g-qty').value = groupQty;
+  document.getElementById('g-qty-display').textContent = groupQty;
+  updateGroupTotal();
+}
+
+function updateGroupTotal() {
+  const fee = getCurrentFee();
+  const total = groupQty * fee.amount;
+  const fmtTotal = '₱' + total.toLocaleString();
+  const fmtPer   = fee.isEarlyBird ? '₱850 (early bird)' : '₱1,000';
+  const el = document.getElementById('group-total-amt');
+  const sub = document.getElementById('group-total-sub');
+  const eb  = document.getElementById('group-eb-badge');
+  if(el)  el.textContent  = fmtTotal;
+  if(sub) sub.textContent = groupQty + ' guests × ' + fmtPer;
+  if(eb)  eb.style.display = fee.isEarlyBird ? 'block' : 'none';
+}
+
+function regNextHandler() {
+  if(regMode === 'group') groupNext(); else regNext();
+}
+
+function groupNext() {
+  const bt  = parseInt(document.getElementById('g-batch').value);
+  const fn  = document.getElementById('g-fname').value.trim();
+  const ln  = document.getElementById('g-lname').value.trim();
+  const em  = document.getElementById('g-email').value.trim();
+  const ph  = document.getElementById('g-phone').value.trim();
+  const err = document.getElementById('group-err');
+  if(!fn||!ln||isNaN(bt)||bt<1950||bt>2030||!em.includes('@')||ph.replace(/[^0-9]/g,'').length<10){
+    err.style.display='block'; return;
+  }
+  err.style.display='none';
+  regData = {firstName:fn, lastName:ln, batch:String(bt), email:em, phone:ph, isGroup:true, groupQty};
+  // Update GCash display for group
+  const fee = getCurrentFee();
+  const total = groupQty * fee.amount;
+  const amtEl = document.getElementById('gcash-amount-display');
+  if(amtEl) amtEl.textContent = '₱'+total.toLocaleString()+'.00';
+  const tipEl = document.getElementById('gcash-tip-msg');
+  if(tipEl) tipEl.innerHTML = '💬 Note: "Batch '+bt+' Group – '+fn+' '+ln+'"';
+  document.getElementById('reg-step1').style.display='none';
+  document.getElementById('reg-step2').style.display='block';
+  setStep(2);
+}
+
+async function groupSubmit() {
+  if(!receiptPreview){alert('Please upload your GCash receipt screenshot.');return;}
+  const btn = document.getElementById('reg-submit-btn');
+  btn.textContent='Saving…'; btn.disabled=true;
+
+  const fee = getCurrentFee();
+  const batch = regData.batch;
+  const qty   = regData.groupQty;
+  const now   = new Date().toISOString();
+  const repId = genId();
+
+  // Generate slot IDs
+  groupSlots = [];
+  const timestamp = Date.now();
+  for(let i=1;i<=qty;i++){
+    groupSlots.push('SSC-B'+batch+'-'+String(i).padStart(3,'0')+'-'+timestamp.toString(36).slice(-3).toUpperCase());
+  }
+
+  // Save group registration record
+  const groupReg = {
+    id: repId,
+    type: 'group',
+    firstName: regData.firstName,
+    lastName:  regData.lastName,
+    batch:     batch,
+    email:     regData.email,
+    phone:     regData.phone,
+    status:    'pending',
+    groupQty:  qty,
+    groupSlots: groupSlots,
+    feePerPerson: fee.amount,
+    totalFee: qty * fee.amount,
+    isEarlyBird: fee.isEarlyBird,
+    receiptImg: receiptPreview,
+    createdAt: now,
+    checkedIn: false,
+    voted: false
+  };
+
+  // Save the group record
+  await FS.addReg(groupReg);
+
+  // Save each slot as individual registration linked to the group
+  if(db) {
+    const fbatch = db.batch();
+    groupSlots.forEach(slotId => {
+      fbatch.set(db.collection('registrations').doc(slotId), {
+        id: slotId,
+        type: 'group_slot',
+        groupId: repId,
+        groupRep: regData.firstName+' '+regData.lastName,
+        batch: batch,
+        firstName: '',
+        lastName:  '',
+        assignedName: '',
+        email: regData.email,
+        phone: regData.phone,
+        status: 'pending',
+        checkedIn: false,
+        voted: false,
+        createdAt: now
+      });
+    });
+    await fbatch.commit();
+  }
+
+  btn.textContent='Submit Registration ✓'; btn.disabled=false;
+
+  // Show group done screen
+  document.getElementById('reg-step2').style.display='none';
+  document.getElementById('reg-step3-group').style.display='block';
+  setStep(3);
+  document.getElementById('g-done-count').textContent = qty;
+  document.getElementById('g-done-batch').textContent = batch;
+  renderGroupSlots();
+}
+
+function renderGroupSlots() {
+  const list = document.getElementById('group-slot-list');
+  const assigned = groupSlots.filter((id,i) => {
+    const inp = document.getElementById('slot-name-'+i);
+    return inp && inp.value.trim();
+  });
+  document.getElementById('g-assign-count').textContent = assigned.length+' assigned';
+  list.innerHTML = groupSlots.map((id,i)=>`
+    <div class="slot-item">
+      <div class="slot-num">${i+1}</div>
+      <div style="flex:1;min-width:0">
+        <div class="slot-id">${id}</div>
+        <div class="slot-name" id="slot-label-${i}">Unassigned</div>
+      </div>
+      <button class="slot-assign-btn" onclick="assignSlotName(${i},'${id}')">Assign name</button>
+    </div>`).join('');
+}
+
+async function assignSlotName(idx, slotId) {
+  const name = prompt('Enter name for slot '+(idx+1)+' ('+slotId+'):');
+  if(!name||!name.trim()) return;
+  const trimmed = name.trim();
+  const parts = trimmed.split(' ');
+  const fn = parts[0]||'';
+  const ln = parts.slice(1).join(' ')||'';
+  // Update in Firebase
+  await FS.updateReg(slotId, {assignedName:trimmed, firstName:fn, lastName:ln});
+  // Update UI
+  const lbl = document.getElementById('slot-label-'+idx);
+  if(lbl){ lbl.textContent=trimmed; lbl.className='slot-name assigned'; }
+  const btn = document.querySelector('[onclick="assignSlotName('+idx+',\''+slotId+'\')"]');
+  if(btn) btn.textContent='Edit';
+  // Update count
+  const all = document.querySelectorAll('.slot-name.assigned');
+  const countEl = document.getElementById('g-assign-count');
+  if(countEl) countEl.textContent = all.length+' assigned';
+}
 
 // ── QR CODE (canvas-based) ───────────────────────────────────────────
 function drawQR(container, text) {
@@ -694,6 +956,8 @@ function handleReceipt(input) {
   reader.readAsDataURL(file);
 }
 async function regSubmit() {
+  // Route to group submit if in group mode
+  if(regMode === 'group') { await groupSubmit(); return; }
   if(!receiptPreview){alert('Please upload your GCash receipt screenshot.');return;}
   const btn=document.getElementById('reg-submit-btn');
   btn.textContent='Saving…';btn.disabled=true;
@@ -719,15 +983,23 @@ async function regSubmit() {
   else es.innerHTML='<div class="email-chip chip-err">❌ Email failed — contact organizer</div>';
 }
 function regReset() {
-  ['r-fname','r-lname','r-batch','r-email','r-phone'].forEach(id=>document.getElementById(id).value='');
+  ['r-fname','r-lname','r-batch','r-email','r-phone'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['g-fname','g-lname','g-batch','g-email','g-phone'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   receiptPreview=null;
+  groupSlots=[];
+  groupQty=10;
+  document.getElementById('g-qty').value=10;
+  document.getElementById('g-qty-display').textContent=10;
+  updateGroupTotal();
   document.getElementById('upload-preview').style.display='none';
   document.getElementById('upload-label').innerHTML='Tap to upload your <strong>GCash receipt screenshot</strong>';
   document.getElementById('upload-zone').classList.remove('has');
   document.getElementById('receipt-file').value='';
   document.getElementById('reg-step3').style.display='none';
+  document.getElementById('reg-step3-group').style.display='none';
   document.getElementById('reg-step1').style.display='block';
   setStep(1);
+  setRegType('individual');
 }
 
 // ── EVENT DAY ────────────────────────────────────────────────────────
@@ -1017,8 +1289,8 @@ function renderAdminRegs() {
     <div class="card" style="padding:1.05rem 1.2rem;border-left:5px solid ${r.status==='paid'?'var(--green)':r.status==='rejected'?'var(--red)':'var(--gold)'};margin-bottom:.8rem">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.4rem;margin-bottom:.65rem">
         <div>
-          <div style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:700;color:var(--navy)">${r.firstName} ${r.lastName}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Batch ${r.batch} · <code style="font-size:.69rem">${r.id}</code></div>
+          <div style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:700;color:var(--navy)">${r.firstName} ${r.lastName}${r.type==='group'?' <span style="font-size:.7rem;background:var(--navy);color:var(--gold);padding:2px 7px;border-radius:100px;font-family:Outfit,sans-serif;vertical-align:middle">👥 Group</span>':''}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${r.type==='group'?`<strong style="color:var(--navy)">${r.groupQty} slots · ₱${(r.totalFee||0).toLocaleString()}</strong> · Batch ${r.batch}`:`Batch ${r.batch} · <code style="font-size:.69rem">${r.id}</code>`}</div>
         </div>
         <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
           <span class="badge ${r.status==='paid'?'b-paid':r.status==='rejected'?'b-rej':'b-pend'}">${r.status==='paid'?'✓ Paid':r.status==='rejected'?'✗ Rejected':'⏳ Pending'}</span>
@@ -1039,7 +1311,10 @@ function renderAdminRegs() {
           ${r.status==='pending'?`
             <p style="font-size:.72rem;color:var(--muted);margin-bottom:.45rem">${r.receiptImg?'Review receipt then approve or reject:':'No receipt — verify manually:'}</p>
             <div style="display:flex;gap:.45rem;flex-wrap:wrap">
-              <button class="btn btn-ok" style="flex:1;padding:9px;font-size:.85rem" onclick="approve('${r.id}')">✓ Approve</button>
+              ${r.type==='group'
+                ?`<button class="btn btn-ok" style="flex:1;padding:9px;font-size:.85rem" onclick="approveGroup('${r.id}')">✓ Approve All ${r.groupQty} Slots</button>`
+                :`<button class="btn btn-ok" style="flex:1;padding:9px;font-size:.85rem" onclick="approve('${r.id}')">✓ Approve</button>`
+              }
               <button class="btn-no" style="padding:9px 14px;font-size:.85rem;border-radius:8px" onclick="reject('${r.id}')">✗ Reject</button>
             </div>`
           :r.status==='paid'
@@ -1052,6 +1327,20 @@ function renderAdminRegs() {
 }
 async function approve(id) { await FS.updateReg(id,{status:'paid',approvedAt:new Date().toISOString()}); }
 async function reject(id) { await FS.updateReg(id,{status:'rejected'}); }
+
+async function approveGroup(groupId) {
+  // Approve the group record
+  await FS.updateReg(groupId, {status:'paid', approvedAt:new Date().toISOString()});
+  // Approve all slots linked to this group
+  const group = adminRegs.find(r=>r.id===groupId);
+  if(!group||!group.groupSlots) return;
+  if(!db) return;
+  const fbatch = db.batch();
+  group.groupSlots.forEach(slotId => {
+    fbatch.update(db.collection('registrations').doc(slotId), {status:'paid', approvedAt:new Date().toISOString()});
+  });
+  await fbatch.commit();
+}
 
 function renderAdminCands() {
   document.getElementById('admin-cands').innerHTML=`
