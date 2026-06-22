@@ -1051,6 +1051,11 @@ function listenPayments() {
   db.collection('registrations').orderBy('createdAt','desc').onSnapshot(function(snap) {
     if (status) { status.textContent = 'Live'; status.style.color = '#16a34a'; }
     allRegistrations = snap.docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    // DEBUG: log first doc fields to console so we can identify exact field names
+    if (allRegistrations.length > 0) {
+      console.log('[FundManager] First registration fields:', Object.keys(allRegistrations[0]));
+      console.log('[FundManager] First registration data:', JSON.stringify(allRegistrations[0]).slice(0, 500));
+    }
     renderPayments(); updatePaymentsBadge();
   }, function(err) {
     console.warn('Realtime failed, falling back to get():', err);
@@ -1092,9 +1097,13 @@ function renderPayments() {
     return;
   }
   if (!allRegistrations.length) {
-    pEl.innerHTML = '<div class="tbl-empty">No registrations found.</div>';
+    pEl.innerHTML = '<div class="tbl-empty">No registrations found in Firebase.</div>';
     return;
   }
+  // Show field names panel (collapsed) so admin can see raw data if needed
+  var firstReg = allRegistrations[0];
+  var fieldKeys = Object.keys(firstReg).filter(function(k){ return k !== 'id'; });
+  console.log('[FundManager] Firestore fields available:', fieldKeys.join(', '));
 
   var filterHtml =
     '<div class="p-filter-row">' +
@@ -1114,13 +1123,36 @@ function renderPayments() {
     var isPending  = r.status === 'pending';
     var statusCls  = r.status==='paid' ? 'paid' : r.status==='rejected' ? 'rejected' : 'pending';
     var statusTxt  = r.status==='paid' ? 'Approved' : r.status==='rejected' ? 'Rejected' : 'Pending';
-    var gcashRef   = r.gcashRef || r.referenceNumber || r.paymentRef || r.gcash_ref || 'Not provided';
-    var receiptSrc = r.receiptImage || r.receiptUrl || r.receiptBase64 || r.receipt || r.gcashReceipt || r.paymentProof || '';
+    var gcashRef   = r.gcashRef || r.gcashReference || r.referenceNumber || r.paymentRef || r.gcash_ref || r.reference || r.refNo || r.gcashRefNo || r.transactionRef || '—';
+    // Scan ALL fields for image data — works regardless of field name
+    var receiptSrc = '';
+    var knownReceiptFields = ['receiptImg','receiptDataUrl','receiptPreview','receiptImage','receiptUrl',
+      'receiptBase64','receipt','gcashReceipt','paymentProof','gcashScreenshot',
+      'screenshot','paymentScreenshot','gcashImage','paymentImage'];
+    for (var _k=0; _k<knownReceiptFields.length; _k++) {
+      var _f = r[knownReceiptFields[_k]];
+      if (_f && typeof _f === 'string' && _f.length > 50) { receiptSrc = _f; break; }
+    }
+    // Fallback: scan every field for data URL or https image URL
+    if (!receiptSrc) {
+      var _keys = Object.keys(r);
+      for (var _ki=0; _ki<_keys.length; _ki++) {
+        var _v = r[_keys[_ki]];
+        if (typeof _v === 'string' && _v.length > 100 &&
+            (_v.indexOf('data:image') === 0 || (_v.indexOf('https://') === 0 && (_v.indexOf('.jpg') !== -1 || _v.indexOf('.png') !== -1 || _v.indexOf('.jpeg') !== -1 || _v.indexOf('firebasestorage') !== -1 || _v.indexOf('cloudinary') !== -1)))) {
+          receiptSrc = _v;
+          console.log('[FundManager] Found receipt in field:', _keys[_ki]);
+          break;
+        }
+      }
+    }
     var hasReceipt = receiptSrc.length > 0;
     var dateStr    = '';
     if (r.createdAt && r.createdAt.toDate) {
-      try { dateStr = r.createdAt.toDate().toLocaleString('en-PH'); } catch(e){}
-    } else if (r.createdAt) { dateStr = r.createdAt; }
+      try { dateStr = r.createdAt.toDate().toLocaleString('en-PH', {dateStyle:'medium',timeStyle:'short'}); } catch(e){}
+    } else if (r.createdAt && typeof r.createdAt === 'string') {
+      try { dateStr = new Date(r.createdAt).toLocaleString('en-PH', {dateStyle:'medium',timeStyle:'short'}); } catch(e){ dateStr = r.createdAt; }
+    }
     // Determine fee
     var regFee;
     if (r.registrationFee)     regFee = r.registrationFee;
@@ -1163,7 +1195,16 @@ function renderPayments() {
       html +=   '<div class="pcard-receipt-label">Tap to enlarge</div>';
       html += '</div>';
     } else {
-      html += '<div class="pcard-no-receipt">No receipt image uploaded</div>';
+      // Show field names so we can identify the right field name in Firestore
+      var _allFields = Object.keys(r).filter(function(k){ return k !== 'id'; });
+      var _strFields = _allFields.filter(function(k){ return typeof r[k] === 'string' && r[k].length > 20; });
+      html += '<div class="pcard-no-receipt">';
+      html +=   'No receipt image found.<br>';
+      html +=   '<small style="color:#bbb;font-size:10px;">Fields in this record: ' + _allFields.join(', ') + '</small><br>';
+      if (_strFields.length) {
+        html += '<small style="color:#bbb;font-size:10px;">Long string fields: ' + _strFields.join(', ') + '</small>';
+      }
+      html += '</div>';
     }
 
     // Action buttons — data attributes, no onclick
