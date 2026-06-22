@@ -1165,60 +1165,60 @@ function renderPayments() {
       regFee = (rd && rd <= '2026-09-30') ? 850 : 1000;
     }
 
-    // Build card using data attributes — NO onclick quotes in HTML strings
+    // Build card — SSA homecoming style: thumbnail left, actions right
     var html = '<div class="pcard ' + (r.status==='paid' ? 'approved' : r.status==='rejected' ? 'rejected' : '') + '">';
 
-    // Top row: name + amount
+    // Top: name + fee/status
     html += '<div class="pcard-top">';
-    html +=   '<div>';
-    html +=     '<div class="pcard-name">' + name + '</div>';
-    html +=     '<div class="pcard-batch">Batch ' + (r.batch||'—') + ' · ' + (r.email||'—') + '</div>';
-    html +=   '</div>';
+    html +=   '<div><div class="pcard-name">' + name + '</div>';
+    html +=   '<div class="pcard-batch">Batch ' + (r.batch||'—') + ' · ' + (r.id||'') + '</div></div>';
     html +=   '<div style="text-align:right">';
     html +=     '<div class="pcard-amount">P' + fmt(regFee) + '</div>';
     html +=     '<span class="p-status-badge ' + statusCls + '">' + statusTxt + '</span>';
-    html +=     '<div style="font-size:10px;color:#888;margin-top:3px;">' + (regFee===850 ? 'Early Bird' : 'Regular Rate') + '</div>';
+    html +=     '<div style="font-size:10px;color:#aaa;margin-top:2px">' + (regFee<=850 ? 'Early Bird' : 'Regular') + '</div>';
     html +=   '</div>';
     html += '</div>';
 
-    // Meta info
+    // Meta: email · phone · time compact
     html += '<div class="pcard-meta">';
-    html +=   (r.phone||'—') + '<br>';
-    html +=   'GCash Ref: <span class="pcard-ref">' + gcashRef + '</span><br>';
-    html +=   (dateStr ? dateStr : '');
+    html +=   '<span>' + (r.email||'—') + '</span>';
+    html +=   '<span class="pcard-meta-dot">·</span>';
+    html +=   '<span>' + (r.phone||'—') + '</span>';
+    html +=   '<span class="pcard-meta-dot">·</span>';
+    html +=   '<span>' + (dateStr||'—') + '</span>';
     html += '</div>';
 
-    // Receipt thumbnail — data-rid avoids all quote escaping
+    // Body: small thumbnail LEFT + review label + buttons RIGHT
+    html += '<div class="pcard-body">';
+
+    // Thumbnail
     if (hasReceipt) {
-      html += '<div class="pcard-receipt" data-rid="' + r.id + '">';
-      html +=   '<img src="' + receiptSrc + '" alt="GCash Receipt" onerror="receiptImgError(this)">';
-      html +=   '<div class="pcard-receipt-label">Tap to enlarge</div>';
+      html += '<div class="pcard-thumb-wrap" data-rid="' + r.id + '">';
+      html +=   '<img src="' + receiptSrc + '" alt="Receipt" onerror="receiptImgError(this)">';
+      html +=   '<div class="pcard-receipt-label">Tap</div>';
       html += '</div>';
     } else {
-      // Show field names so we can identify the right field name in Firestore
-      var _allFields = Object.keys(r).filter(function(k){ return k !== 'id'; });
-      var _strFields = _allFields.filter(function(k){ return typeof r[k] === 'string' && r[k].length > 20; });
-      html += '<div class="pcard-no-receipt">';
-      html +=   'No receipt image found.<br>';
-      html +=   '<small style="color:#bbb;font-size:10px;">Fields in this record: ' + _allFields.join(', ') + '</small><br>';
-      if (_strFields.length) {
-        html += '<small style="color:#bbb;font-size:10px;">Long string fields: ' + _strFields.join(', ') + '</small>';
-      }
-      html += '</div>';
+      html += '<div class="pcard-no-thumb"><div class="pcard-no-thumb-txt">No receipt</div></div>';
     }
 
-    // Action buttons — data attributes, no onclick
-    html += '<div class="pcard-actions">';
+    // Right side
+    html += '<div class="pcard-right">';
+    html +=   '<div class="pcard-review-lbl">Review receipt then approve or reject:</div>';
+    html +=   '<div class="pcard-actions">';
     if (isPending) {
-      html += '<button class="btn-approve" data-rid="' + r.id + '" data-name="' + name.replace(/"/g, '&quot;') + '">Approve</button>';
-      html += '<button class="btn-reject"  data-rid="' + r.id + '">Reject</button>';
+      html +=   '<button class="btn-approve" data-rid="' + r.id + '" data-name="' + name.replace(/"/g, '&quot;') + '">Approve</button>';
+      html +=   '<button class="btn-reject" data-rid="' + r.id + '">Reject</button>';
+    } else {
+      html +=   '<div style="font-size:12px;color:#888;padding:4px 0">' + (r.status==='paid' ? 'Approved' : 'Rejected') + '</div>';
     }
+    html +=   '</div>';
     if (hasReceipt) {
-      html += '<button class="btn-receipt" data-rid="' + r.id + '">View Receipt</button>';
+      html += '<button class="btn-receipt" data-rid="' + r.id + '" style="align-self:flex-start">View Full Receipt</button>';
     }
     html += '</div>';
 
-    html += '</div>';
+    html += '</div>'; // pcard-body
+    html += '</div>'; // pcard
     return html;
   }).join('');
 
