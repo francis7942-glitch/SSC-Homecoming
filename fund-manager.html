@@ -174,7 +174,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .lcard-from { font-size: 12px; color: #555; margin-top: 5px; }
 .lcard-footer { display: flex; justify-content: flex-end; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f0f0f0; }
 .lock-icon { font-size: 12px; color: #ccc; }
-.btn-del { background: none; border: 1px solid #fca5a5; color: #dc2626; cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 6px; font-family: inherit; }
+.btn-del  { background: none; border: 1px solid #fca5a5; color: #dc2626; cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 6px; font-family: inherit; }
+.btn-edit { background: none; border: 1px solid #93c5fd; color: #2563eb; cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 6px; font-family: inherit; margin-right: 6px; }
+.edit-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 400; display: none; align-items: flex-end; justify-content: center; }
+.edit-modal-bg.open { display: flex; }
+.edit-modal { background: #fff; border-radius: 20px 20px 0 0; padding: 20px 16px; width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 
 /* ── BADGES ── */
 .type-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; }
@@ -577,6 +581,42 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
 </div>
 
+<!-- ══ EDIT MODAL ══ -->
+<div class="edit-modal-bg" id="edit-modal">
+  <div class="edit-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:700">Edit Transaction</div>
+      <button class="btn-close" onclick="closeEditModal()">×</button>
+    </div>
+    <div class="type-row" id="edit-type-row">
+      <button class="type-btn income"   id="edit-type-income"    onclick="setEditType('income',this)">💚 Income</button>
+      <button class="type-btn expense"  id="edit-type-expense"   onclick="setEditType('expense',this)">🔴 Expense</button>
+      <button class="type-btn transfer" id="edit-type-transfer"  onclick="setEditType('transfer',this)">🔵 Transfer</button>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Date</label><input type="date" id="e-date"></div>
+      <div class="field"><label>Amount (₱)</label><input type="number" id="e-amount" min="0" step="0.01" inputmode="decimal"></div>
+      <div class="field"><label id="e-lbl-acct">Account</label>
+        <select id="e-acct"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
+      </div>
+      <div class="field" id="e-acct2-wrap"><label>Transfer To</label>
+        <select id="e-acct2"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
+      </div>
+      <div class="field" id="e-cat-wrap"><label>Category</label><select id="e-cat"></select></div>
+      <div class="field" id="e-from-wrap"><label>Donor / From</label>
+        <input type="text" id="e-from" placeholder="e.g. Juan dela Cruz"></div>
+      <div class="field"><label>Reference No.</label><input type="text" id="e-ref"></div>
+      <div class="field"><label>Recorded By</label><input type="text" id="e-by"></div>
+      <div class="field full"><label>Description</label><textarea id="e-desc"></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" style="flex:1;margin-top:0" onclick="doEdit()">Save Changes</button>
+    </div>
+    <div class="pin-err" id="edit-err"></div>
+  </div>
+</div>
+
 <!-- ══ DELETE MODAL ══ -->
 <div class="del-modal-bg" id="del-modal">
   <div class="del-modal">
@@ -594,7 +634,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 var CFG = {
   pins: { treasurer:'1234', auditor:'5678' },
   incCats: ['Donations','Sponsorships','Ticket Sales','Fundraising Activity','Registration Fee','Other Income'],
-  expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Miscellaneous Expense'],
+  expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Miscellaneous Expense'],
 };
 
 var FIREBASE_CFG = {
@@ -607,7 +647,7 @@ var FIREBASE_CFG = {
 };
 
 /* ── STATE ── */
-var role = null, pendingRole = null, txnType = 'income', pendingDel = null, monthFilter = null;
+var role = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null;
 var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
 var selectedAcct = 'GCash';
 
@@ -797,8 +837,15 @@ function renderLedger() {
   var months=[],seen={};
   TXN.forEach(function(t){ if(t.txn_date){var m=t.txn_date.slice(0,7);if(!seen[m]){seen[m]=1;months.push(m);}} });
   months.sort().reverse();
-  el('month-chips').innerHTML='<span class="chip'+(monthFilter?'':' on')+'" onclick="setMonth(null,this)">All</span>'+
-    months.forEach(function(m){ chipsHtml += '<span class="chip"'+(monthFilter===m?' style="font-weight:900"':'')+' data-month="'+m+'">'+fmtMon(m)+'</span>'; });
+    var chipsHtml = '<span class="chip'+(monthFilter?'':' on')+'" data-month="">All</span>';
+  months.forEach(function(m){
+    chipsHtml += '<span class="chip'+(monthFilter===m?' on':'')+'" data-month="'+m+'">'+fmtMon(m)+'</span>';
+  });
+  el('month-chips').innerHTML = chipsHtml;
+  el('month-chips').onclick = function(e){
+    var t = e.target;
+    if (t.classList.contains('chip')) { setMonth(t.getAttribute('data-month')||null, t); }
+  };
   var rows=TXN.filter(function(t){
     if(ft&&t.type!==ft) return false;
     if(fa&&t.account!==fa&&t.account_to!==fa) return false;
@@ -813,20 +860,21 @@ function renderLedger() {
   var canDel=role==='treasurer', signs={income:'+',expense:'−',transfer:'↔'};
   body.innerHTML=rows.map(function(t){
     var acctLabel=t.account+(t.type==='transfer'&&t.account_to?' to '+t.account_to:'');
+    var editBtn=canDel?'<button class="btn-edit" data-editid="'+t.id+'">Edit</button>':'';
     var delBtn=canDel?'<button class="btn-del" data-delid="'+t.id+'">Delete</button>':'<span class="lock-icon">locked</span>';
-    var delBtn=canDel?'<button class="btn-del" data-delid="'+t.id+'">Delete</button>':'<span class="lock-icon">locked</span>';
+    return '<div class="lcard">'+
       '<div class="lcard-row1"><div class="lcard-badges">'+
         '<span class="type-tag '+t.type+'">'+t.type+'</span>'+
         '<span class="cat-pill">'+(t.category||'—')+'</span>'+
         '<span class="acct-tag">'+acctLabel+'</span>'+
       '</div><div class="lcard-amt '+t.type+'">'+(signs[t.type]||'')+'P'+fmt(t.amount)+'</div></div>'+
-      '<div class="lcard-desc">'+(t.description||'No description')+'</div>'+
+      '<div class="lcard-desc">'+(t.description||t.contributor||'No description')+'</div>'+
       '<div class="lcard-meta"><span>'+t.txn_date+'</span><span>Ref: '+(t.ref_no||'—')+'</span><span>By: '+(t.recorded_by||'—')+'</span></div>'+
       (t.contributor?'<div class="lcard-from">From: '+t.contributor+'</div>':'')+
-      '<div class="lcard-footer">'+delBtn+'</div>'+
+      '<div class="lcard-footer">'+editBtn+delBtn+'</div>'+
     '</div>';
   }).join('');
-  body.onclick=function(e){var t=e.target;while(t&&t!==body){var did=t.getAttribute('data-delid');if(did){triggerDel(did);return;}t=t.parentNode;}};
+  body.onclick=function(e){var t=e.target;while(t&&t!==body){var did=t.getAttribute('data-delid');if(did){triggerDel(did);return;}var eid=t.getAttribute('data-editid');if(eid){triggerEdit(eid);return;}t=t.parentNode;}};
 }
 function setMonth(m,elem){monthFilter=m;document.querySelectorAll('#month-chips .chip').forEach(function(c){c.classList.remove('on');});elem.classList.add('on');renderLedger();}
 
@@ -865,7 +913,9 @@ function renderContribs(){
     var rc=rank===1?'r1':rank===2?'r2':rank===3?'r3':'';
     var rl=rank<=3?medals[rank-1]+' #'+rank:'#'+rank;
     var safe=c.name.replace(/'/g,"\'");
-      '<div class="contrib-card" data-cname="'+safe+'">'+
+    return '<div class="contrib-card" data-cname="'+safe+'">'+
+      '<div class="c-rank '+rc+'">'+rl+'</div>'+
+      '<div class="c-name">'+c.name+'</div>'+
       '<div class="c-meta">'+c.count+' contribution'+(c.count>1?'s':'')+' · Last: '+c.last+'</div>'+
       '<div class="c-total">P'+fmt(c.total)+'</div>'+
       '<div class="c-bar-bg"><div class="c-bar" style="width:'+Math.round(c.total/maxT*100)+'%"></div></div>'+
@@ -912,6 +962,69 @@ function triggerDel(id){
   el('del-modal').classList.add('open');
 }
 function closeDelModal(){el('del-modal').classList.remove('open');pendingDel=null;}
+/* ── EDIT TXN ── */
+function triggerEdit(id){
+  if(role==='auditor'){alert('Auditors cannot edit.');return;}
+  var t=TXN.find(function(x){return x.id===id;}); if(!t) return;
+  pendingEdit=id; editTxnType=t.type;
+  ['income','expense','transfer'].forEach(function(tp){el('edit-type-'+tp).classList.toggle('on',tp===t.type);});
+  el('e-date').value=t.txn_date||'';
+  el('e-amount').value=t.amount||'';
+  el('e-acct').value=t.account||'GCash';
+  el('e-acct2').value=t.account_to||'GCash';
+  el('e-from').value=t.contributor||'';
+  el('e-ref').value=t.ref_no||'';
+  el('e-by').value=t.recorded_by||'';
+  el('e-desc').value=t.description||'';
+  fillEditCats(t.type);
+  if(t.category) el('e-cat').value=t.category;
+  updateEditFields(t.type);
+  el('edit-err').textContent='';
+  el('edit-modal').classList.add('open');
+}
+function fillEditCats(type){
+  if(type==='transfer'){el('e-cat-wrap').style.display='none';return;}
+  el('e-cat-wrap').style.display='flex';
+  el('e-cat').innerHTML=(type==='income'?CFG.incCats:CFG.expCats).map(function(c){return'<option>'+c+'</option>';}).join('');
+}
+function setEditType(t,btn){
+  editTxnType=t;
+  document.querySelectorAll('#edit-type-row .type-btn').forEach(function(b){b.classList.remove('on');});
+  btn.classList.add('on');
+  fillEditCats(t); updateEditFields(t);
+}
+function updateEditFields(type){
+  el('e-acct2-wrap').style.display=type==='transfer'?'flex':'none';
+  el('e-from-wrap').style.display=type==='income'?'flex':'none';
+  el('e-lbl-acct').textContent=type==='transfer'?'From Account':type==='expense'?'Account Debited':'Account';
+}
+function closeEditModal(){el('edit-modal').classList.remove('open');pendingEdit=null;}
+function doEdit(){
+  if(!pendingEdit) return;
+  var date=el('e-date').value, amount=parseFloat(el('e-amount').value);
+  var acct=el('e-acct').value, acct2=el('e-acct2').value;
+  var cat=editTxnType!=='transfer'?el('e-cat').value:'Transfer';
+  var from=el('e-from').value.trim(), ref=el('e-ref').value.trim(), by=el('e-by').value.trim(), desc=el('e-desc').value.trim();
+  if(!date||!amount||amount<=0){el('edit-err').textContent='Enter a valid date and amount.';return;}
+  if(editTxnType==='transfer'&&acct===acct2){el('edit-err').textContent='From and To accounts must differ.';return;}
+  var orig=TXN.find(function(x){return x.id===pendingEdit;});
+  var changes={txn_date:date,amount:amount,type:editTxnType,account:acct,
+    account_to:editTxnType==='transfer'?acct2:null,category:cat,
+    contributor:editTxnType==='income'?(from||null):null,
+    ref_no:ref,recorded_by:by,description:desc};
+  var aEntry={id:uid(),created_at:new Date().toISOString(),action:'edit',
+    detail:'Edited txn — cat: '+(orig?orig.category:'?')+' → '+cat+(orig&&orig.amount!==amount?' | amt: P'+fmt(orig.amount)+' → P'+fmt(amount):'')+' by '+(by||'?'),
+    done_by:by||'Unknown'};
+  if(db){
+    db.collection('fund_transactions').doc(pendingEdit).update(changes).then(function(){
+      return db.collection('fund_audit').doc(aEntry.id).set(aEntry);
+    }).then(closeEditModal).catch(function(e){el('edit-err').textContent='Save error: '+e.message;});
+  } else {
+    var idx=TXN.findIndex(function(x){return x.id===pendingEdit;});
+    if(idx!==-1) TXN[idx]=Object.assign({},TXN[idx],changes);
+    AUDIT.unshift(aEntry); closeEditModal(); renderAll();
+  }
+}
 function doDelete(){
   if(!pendingDel) return;
   var t=TXN.find(function(x){return x.id===pendingDel;}); if(!t){closeDelModal();return;}
@@ -1200,7 +1313,7 @@ function renderPassbook(){
     if(isDebit)  runBal-=t.amount;
     var creditCell=isCredit?'<span class="ab-credit">+P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
     var debitCell =isDebit ?'<span class="ab-debit">−P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
-    var descHtml='<div class="ab-desc">'+(t.description||'—')+'</div>';
+    var descHtml='<div class="ab-desc">'+(t.description||t.contributor||'—')+'</div>';
     if(t.type==='transfer'){var arrow=t.account===acct?'To: '+t.account_to:'From: '+t.account;descHtml+='<span class="ab-transfer-tag">Transfer '+arrow+'</span>';}
     else{descHtml+='<span class="ab-cat">'+(t.category||'—')+'</span>';}
     if(t.recorded_by) descHtml+='<div style="font-size:10px;color:#bbb;margin-top:2px">By: '+t.recorded_by+'</div>';
