@@ -376,6 +376,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .report-table td { padding:8px 12px; border:1px solid #eee; }
 .report-table tr:nth-child(even) td { background:#fafafa; }
 .report-table .total-row td { font-weight:700; background:#f0f0f0; border-top:2px solid #ccc; }
+.report-cat-row { cursor:pointer; }
+.report-cat-row:hover td { background:#eef3ff !important; }
+.report-cat-row .drill-chev { display:inline-block; font-size:9px; color:#aaa; margin-right:5px; transition:transform .15s; }
+.report-cat-row.expanded .drill-chev { transform:rotate(90deg); color:#2563eb; }
+.report-drill-td { padding:0 !important; background:#f5f8ff !important; border-left:3px solid #bfdbfe !important; }
+.report-drill-inner { padding:4px 12px 10px 16px; }
+.drill-item { display:flex; justify-content:space-between; align-items:flex-start; padding:7px 0; border-bottom:1px solid #eee; gap:10px; }
+.drill-item:last-child { border-bottom:none; }
+.drill-left { flex:1; min-width:0; }
+.drill-date { font-size:11px; color:#888; font-family:monospace; }
+.drill-desc { font-size:12px; color:#222; margin-top:1px; line-height:1.3; }
+.drill-meta { font-size:10px; color:#aaa; margin-top:2px; }
+.drill-amt  { font-size:13px; font-weight:700; font-family:monospace; white-space:nowrap; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -685,7 +698,7 @@ var FIREBASE_CFG = {
 };
 
 /* ── STATE ── */
-var role = null, currentUser = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null;
+var role = null, currentUser = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null, lastReportData = null;
 var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
 var selectedAcct = 'GCash';
 
@@ -1458,7 +1471,7 @@ function renderReport() {
   if(incRows.length){
     html+='<table class="report-table"><thead><tr><th>Category</th><th style="text-align:right">Amount</th><th style="text-align:right">Share</th></tr></thead><tbody>';
     incRows.forEach(function(r){
-      html+='<tr><td>'+r[0]+'</td><td style="text-align:right;color:#16a34a;font-family:monospace">+₱'+fmt(r[1])+'</td>'+
+      html+='<tr class="report-cat-row" data-type="income" data-cat="'+r[0].replace(/"/g,'&quot;')+'"><td><span class="drill-chev">▶</span>'+r[0]+'</td><td style="text-align:right;color:#16a34a;font-family:monospace">+₱'+fmt(r[1])+'</td>'+
         '<td style="text-align:right;color:#888">'+(d.totalInc>0?(r[1]/d.totalInc*100).toFixed(1)+'%':'—')+'</td></tr>';
     });
     html+='<tr class="total-row"><td><strong>TOTAL INCOME</strong></td><td style="text-align:right;font-family:monospace;color:#16a34a"><strong>+₱'+fmt(d.totalInc)+'</strong></td><td></td></tr></tbody></table>';
@@ -1471,7 +1484,7 @@ function renderReport() {
   if(expRows.length){
     html+='<table class="report-table"><thead><tr><th>Category</th><th style="text-align:right">Amount</th><th style="text-align:right">Share</th></tr></thead><tbody>';
     expRows.forEach(function(r){
-      html+='<tr><td>'+r[0]+'</td><td style="text-align:right;color:#dc2626;font-family:monospace">−₱'+fmt(r[1])+'</td>'+
+      html+='<tr class="report-cat-row" data-type="expense" data-cat="'+r[0].replace(/"/g,'&quot;')+'"><td><span class="drill-chev">▶</span>'+r[0]+'</td><td style="text-align:right;color:#dc2626;font-family:monospace">−₱'+fmt(r[1])+'</td>'+
         '<td style="text-align:right;color:#888">'+(d.totalExp>0?(r[1]/d.totalExp*100).toFixed(1)+'%':'—')+'</td></tr>';
     });
     html+='<tr class="total-row"><td><strong>TOTAL EXPENSES</strong></td><td style="text-align:right;font-family:monospace;color:#dc2626"><strong>−₱'+fmt(d.totalExp)+'</strong></td><td></td></tr></tbody></table>';
@@ -1487,6 +1500,51 @@ function renderReport() {
   '</div></div>';
 
   el('report-body').innerHTML=html;
+  lastReportData=d;
+  document.querySelectorAll('#report-body .report-cat-row').forEach(function(row){
+    row.addEventListener('click',function(){ toggleDrillDown(row); });
+  });
+}
+
+function toggleDrillDown(row) {
+  var next=row.nextElementSibling;
+  if(next&&next.classList.contains('report-drill-row')){
+    next.parentNode.removeChild(next);
+    row.classList.remove('expanded');
+    return;
+  }
+  if(!lastReportData) return;
+  var type=row.getAttribute('data-type');
+  var cat=row.getAttribute('data-cat');
+  var txns=lastReportData.inMonth.filter(function(t){return t.type===type&&t.category===cat;});
+  txns.sort(function(a,b){return a.txn_date>b.txn_date?1:-1;});
+  var isInc=type==='income', color=isInc?'#16a34a':'#dc2626', sign=isInc?'+':'−';
+  var inner='<div class="report-drill-inner">';
+  if(!txns.length){
+    inner+='<div style="color:#aaa;font-size:12px;padding:8px 0">No transactions found.</div>';
+  } else {
+    inner+=txns.map(function(t){
+      var label=t.contributor||t.description||'—';
+      var meta=[];
+      if(t.account) meta.push(t.account);
+      if(t.ref_no)  meta.push('Ref: '+t.ref_no);
+      if(t.recorded_by) meta.push('By: '+t.recorded_by);
+      return '<div class="drill-item">'+
+        '<div class="drill-left">'+
+          '<div class="drill-date">'+t.txn_date+'</div>'+
+          '<div class="drill-desc">'+label+'</div>'+
+          (meta.length?'<div class="drill-meta">'+meta.join(' · ')+'</div>':'')+
+        '</div>'+
+        '<div class="drill-amt" style="color:'+color+'">'+sign+'₱'+fmt(t.amount)+'</div>'+
+      '</div>';
+    }).join('');
+  }
+  inner+='</div>';
+  var dr=document.createElement('tr');
+  dr.className='report-drill-row';
+  dr.innerHTML='<td colspan="3" class="report-drill-td">'+inner+'</td>';
+  row.parentNode.insertBefore(dr,row.nextSibling);
+  row.classList.add('expanded');
 }
 
 function exportExcel() {
