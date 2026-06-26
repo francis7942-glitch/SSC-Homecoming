@@ -95,6 +95,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .pin-err { color: #dc2626; font-size: 12px; text-align: center; margin-top: 8px; min-height: 18px; }
 .pin-note { font-size: 11px; color: #bbb; text-align: center; margin-top: 14px; line-height: 1.5; }
 .pin-note code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+.user-btn { padding: 11px 16px; border: 2px solid #e5e7eb; border-radius: 10px; background: #fff; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 10px; transition: border-color .15s; }
+.user-btn:hover { border-color: #2563eb; }
+.user-btn.selected { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
+.user-btn .u-role { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 20px; margin-left: auto; }
+.u-role-treasurer { background: #dcfce7; color: #15803d; }
+.u-role-auditor   { background: #fef9c3; color: #92400e; }
 
 /* ── WRAP ── */
 .wrap { max-width: 960px; margin: 0 auto; padding: 14px 12px; }
@@ -533,13 +539,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <span class="bar-icon">📊</span>
     <span class="bar-label">Public</span>
   </button>
-  <button class="bar-btn auditor-btn" id="bar-auditor" onclick="tapRole('auditor')">
-    <span class="bar-icon">🔍</span>
-    <span class="bar-label">Auditor</span>
-  </button>
-  <button class="bar-btn treasurer-btn" id="bar-treasurer" onclick="tapRole('treasurer')">
-    <span class="bar-icon">💼</span>
-    <span class="bar-label">Treasurer</span>
+  <button class="bar-btn" id="bar-login" onclick="tapLogin()">
+    <span class="bar-icon">🔐</span>
+    <span class="bar-label">Login</span>
   </button>
   <button class="bar-logout" id="bar-logout" style="display:none" onclick="doLogout()">
     <span class="bar-icon">↩️</span>
@@ -550,17 +552,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <!-- ══ PIN MODAL ══ -->
 <div class="pin-modal-bg" id="pin-modal">
   <div class="pin-modal">
-    <div class="pin-modal-title" id="pin-title">Enter PIN</div>
-    <div class="pin-modal-sub" id="pin-sub">Enter your PIN to continue</div>
+    <div class="pin-modal-title">Fund Manager Login</div>
+    <div class="pin-modal-sub">Select your name, then enter your PIN</div>
+    <div id="user-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
     <input class="pin-input" type="password" id="pin-in" maxlength="6"
       placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')"
       onkeydown="if(event.key==='Enter')doLogin()">
     <div class="pin-actions">
       <button class="btn-cancel-pin" onclick="closePinModal()">Cancel</button>
-      <button class="btn-enter" id="pin-enter-btn" onclick="doLogin()">Enter</button>
+      <button class="btn-enter green" id="pin-enter-btn" onclick="doLogin()">Enter</button>
     </div>
     <div class="pin-err" id="pin-err"></div>
-    <div class="pin-note">🧪 Demo — Treasurer <code>1234</code> · Auditor <code>5678</code></div>
   </div>
 </div>
 
@@ -632,7 +634,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <script>
 /* ── CONFIG ── */
 var CFG = {
-  pins: { treasurer:'1234', auditor:'5678' },
+  users: [
+    { name:'Janice',  pin:'0724', role:'treasurer' },
+    { name:'Tina',  pin:'2002', role:'auditor'   },
+    { name:'Angeli',  pin:'0529', role:'Asst Treasurer'   },
+  ],
   incCats: ['Donations','Sponsorships','Ticket Sales','Fundraising Activity','Registration Fee','Other Income'],
   expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Miscellaneous Expense'],
 };
@@ -647,7 +653,7 @@ var FIREBASE_CFG = {
 };
 
 /* ── STATE ── */
-var role = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null;
+var role = null, currentUser = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null;
 var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
 var selectedAcct = 'GCash';
 
@@ -688,35 +694,49 @@ function switchPage(pg) {
   var btns = document.querySelectorAll('.bar-btn');
   for (var j=0;j<btns.length;j++) btns[j].classList.remove('active');
   if (pg==='public')    el('bar-public').classList.add('active');
-  if (pg==='dashboard') el(role==='treasurer'?'bar-treasurer':'bar-auditor').classList.add('active');
+  if (pg==='dashboard') el('bar-login').classList.add('active');
 }
 
 /* ── AUTH ── */
-function tapRole(r) {
-  if (role===r) { switchPage('dashboard'); return; }
-  pendingRole = r;
-  el('pin-title').textContent = r==='treasurer' ? 'Treasurer Login' : 'Auditor Login';
-  el('pin-sub').textContent   = 'Enter your '+r+' PIN';
-  var btn = el('pin-enter-btn');
-  btn.textContent = 'Enter';
-  btn.className   = 'btn-enter'+(r==='treasurer'?' green':'');
+function tapLogin() {
+  if (currentUser) { switchPage('dashboard'); return; }
+  // Build user buttons
+  var list = el('user-list');
+  list.innerHTML = CFG.users.map(function(u,i){
+    return '<button class="user-btn" id="ubtn-'+i+'" onclick="selectUser('+i+')">'
+      + '<span>'+u.name+'</span>'
+      + '<span class="u-role u-role-'+u.role+'">'+u.role+'</span>'
+      + '</button>';
+  }).join('');
+  pendingRole = null;
   el('pin-in').value = '';
   el('pin-err').textContent = '';
   el('pin-modal').classList.add('open');
   setTimeout(function(){ el('pin-in').focus(); },100);
 }
+function selectUser(i) {
+  pendingRole = i;
+  document.querySelectorAll('.user-btn').forEach(function(b){ b.classList.remove('selected'); });
+  el('ubtn-'+i).classList.add('selected');
+  setTimeout(function(){ el('pin-in').focus(); },50);
+}
 function doLogin() {
-  var pin = el('pin-in').value;
-  if (pin===CFG.pins[pendingRole]) {
-    role = pendingRole;
+  if (pendingRole === null) { el('pin-err').textContent = 'Select your name first.'; return; }
+  var user = CFG.users[pendingRole];
+  if (el('pin-in').value === user.pin) {
+    currentUser = user;
+    role = user.role;
     closePinModal();
     renderAll();
     switchPage('dashboard');
-    el('top-role-badge').innerHTML = '<span class="top-role-badge role-'+role+'">'+(role==='treasurer'?'Treasurer':'Auditor')+'</span>';
+    el('top-role-badge').innerHTML =
+      '<span class="top-role-badge role-'+role+'">'+user.name
+      +' <span style="opacity:.6;font-weight:400">('+role+')</span></span>';
     var addTab = el('tab-add');
     if (role==='auditor') { addTab.style.display='none'; goTab('ledger'); }
-    else                  { addTab.style.display=''; goTab('add'); }
+    else                  { addTab.style.display=''; goTab('add'); el('f-by').value=user.name; }
     el('bar-logout').style.display='flex';
+    el('bar-login').style.display='none';
     window.scrollTo(0,0);
   } else {
     el('pin-err').textContent = 'Wrong PIN. Try again.';
@@ -724,7 +744,12 @@ function doLogin() {
   }
 }
 function closePinModal() { el('pin-modal').classList.remove('open'); pendingRole=null; }
-function doLogout() { role=null; el('bar-logout').style.display='none'; switchPage('public'); }
+function doLogout() {
+  role=null; currentUser=null;
+  el('bar-logout').style.display='none';
+  el('bar-login').style.display='';
+  switchPage('public');
+}
 
 /* ── TXN TYPE ── */
 function setType(t,btn) {
@@ -751,7 +776,7 @@ function addTxn() {
   if (role==='auditor') { alert('Auditors are read-only.'); return; }
   var date=qs('f-date'), amount=parseFloat(qs('f-amount')), acct=qs('f-acct'), acct2=qs('f-acct2');
   var cat=txnType!=='transfer'?qs('f-cat'):'Transfer';
-  var from=qs('f-from').trim(), ref=qs('f-ref').trim(), by=qs('f-by').trim(), desc=qs('f-desc').trim();
+  var from=qs('f-from').trim(), ref=qs('f-ref').trim(), by=(qs('f-by').trim()||currentUser&&currentUser.name||''), desc=qs('f-desc').trim();
   if (!date||!amount||amount<=0) { alert('Enter a valid date and amount.'); return; }
   if (txnType==='transfer'&&acct===acct2) { alert('From and To accounts must differ.'); return; }
   var t = { id:uid(), created_at:new Date().toISOString(), txn_date:date, type:txnType,
@@ -974,7 +999,7 @@ function triggerEdit(id){
   el('e-acct2').value=t.account_to||'GCash';
   el('e-from').value=t.contributor||'';
   el('e-ref').value=t.ref_no||'';
-  el('e-by').value=t.recorded_by||'';
+  el('e-by').value=t.recorded_by||(currentUser?currentUser.name:'')||'';
   el('e-desc').value=t.description||'';
   fillEditCats(t.type);
   if(t.category) el('e-cat').value=t.category;
@@ -1004,7 +1029,7 @@ function doEdit(){
   var date=el('e-date').value, amount=parseFloat(el('e-amount').value);
   var acct=el('e-acct').value, acct2=el('e-acct2').value;
   var cat=editTxnType!=='transfer'?el('e-cat').value:'Transfer';
-  var from=el('e-from').value.trim(), ref=el('e-ref').value.trim(), by=el('e-by').value.trim(), desc=el('e-desc').value.trim();
+  var from=el('e-from').value.trim(), ref=el('e-ref').value.trim(), by=(el('e-by').value.trim()||currentUser&&currentUser.name||''), desc=el('e-desc').value.trim();
   if(!date||!amount||amount<=0){el('edit-err').textContent='Enter a valid date and amount.';return;}
   if(editTxnType==='transfer'&&acct===acct2){el('edit-err').textContent='From and To accounts must differ.';return;}
   var orig=TXN.find(function(x){return x.id===pendingEdit;});
@@ -1029,7 +1054,7 @@ function doDelete(){
   if(!pendingDel) return;
   var t=TXN.find(function(x){return x.id===pendingDel;}); if(!t){closeDelModal();return;}
   var aEntry={id:uid(),created_at:new Date().toISOString(),action:'delete',
-    detail:'DELETED P'+fmt(t.amount)+' '+t.type+' — '+t.category+' — '+t.account+' ('+t.txn_date+')',done_by:'Treasurer'};
+    detail:'DELETED P'+fmt(t.amount)+' '+t.type+' — '+t.category+' — '+t.account+' ('+t.txn_date+')',done_by:currentUser?currentUser.name:'Treasurer'};
   if(db){
     db.collection('fund_transactions').doc(pendingDel).delete().then(function(){
       return db.collection('fund_audit').doc(aEntry.id).set(aEntry);
@@ -1334,6 +1359,7 @@ function goTab(tab){
     var s=el('sec-'+t); if(s) s.style.display=t===tab?'block':'none';
     var b=el('tab-'+t); if(b) b.classList.toggle('active',t===tab);
   });
+  if(tab==='add'&&currentUser)  el('f-by').value=el('f-by').value||currentUser.name;
   if(tab==='ledger')       renderLedger();
   if(tab==='accounts')     renderPassbook();
   if(tab==='contributors') renderContribs();
