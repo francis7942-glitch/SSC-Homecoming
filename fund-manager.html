@@ -8,9 +8,15 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
+html {
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
-  overflow-x: hidden;
+}
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   touch-action: pan-y;
   -webkit-user-select: none;
   user-select: none;
@@ -52,7 +58,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .bar-logout .bar-label { font-size: 10px; font-weight: 600; text-transform: uppercase; }
 
 /* ── PAGE WRAPPER (leaves room for bottom bar) ── */
-.page { display: none; padding-bottom: calc(68px + env(safe-area-inset-bottom)); min-height: 100vh; }
+.page { display: none; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
 .page.active { display: block; }
 
 /* ── TOP HEADER (pages that need it) ── */
@@ -76,7 +82,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .pin-modal-bg {
   position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 500;
   display: none; align-items: flex-start; justify-content: center;
-  padding-top: 80px;
+  padding-top: 80px; overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
 .pin-modal-bg.open { display: flex; }
 .pin-modal {
@@ -389,12 +395,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .drill-desc { font-size:12px; color:#222; margin-top:1px; line-height:1.3; }
 .drill-meta { font-size:10px; color:#aaa; margin-top:2px; }
 .drill-amt  { font-size:13px; font-weight:700; font-family:monospace; white-space:nowrap; flex-shrink:0; }
+.proj-pill  { font-size:10px; padding:3px 8px; border-radius:20px; background:#fef3c7; color:#92400e; font-weight:600; white-space:nowrap; }
+.drill-proj-hdr { display:flex; align-items:center; gap:8px; padding:9px 0; cursor:pointer; border-bottom:1px solid #eee; -webkit-user-select:none; user-select:none; }
+.drill-proj-hdr:active { background:#fffbeb; margin:0 -16px; padding:9px 16px; }
+.drill-proj-body { padding-left:12px; border-left:3px solid #fef3c7; margin-left:4px; }
+
+/* ── SETTINGS ── */
+.settings-section { margin-bottom:24px; }
+.settings-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#555; margin-bottom:10px; padding-bottom:6px; border-bottom:2px solid #e0e0e0; }
+.settings-section-sub { font-size:12px; color:#888; margin-bottom:10px; }
+.settings-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:6px; background:#fafafa; }
+.settings-item-name { flex:1; font-size:13px; color:#222; }
+.settings-item-del  { background:none; border:1px solid #fca5a5; color:#dc2626; border-radius:6px; padding:3px 10px; font-size:13px; cursor:pointer; font-family:inherit; line-height:1; }
+.settings-item-edit { background:none; border:1px solid #93c5fd; color:#2563eb; border-radius:6px; padding:3px 10px; font-size:13px; cursor:pointer; font-family:inherit; line-height:1; }
+.settings-add-row { display:flex; gap:8px; margin-top:4px; }
+.settings-add-input { flex:1; padding:9px 11px; border:1.5px solid #ddd; border-radius:8px; font-size:13px; font-family:inherit; outline:none; }
+.settings-add-input:focus { border-color:#2563eb; }
+.settings-add-btn { padding:9px 16px; background:#2563eb; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap; }
 </style>
 </head>
 <body>
 
 <!-- ══ PUBLIC PAGE (default landing) ══ -->
-<div class="page active" id="page-public">
+<div class="page" id="page-public">
   <div class="pub-head">
     <div class="pub-title" style="color:#fff">🎓 Alumni Homecoming Fund</div>
     <div class="pub-sub">Transparency Report</div>
@@ -433,6 +456,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button class="sec-tab"        id="tab-audit"         onclick="goTab('audit')">🔍 Audit Log</button>
       <button class="sec-tab"        id="tab-payments"      onclick="goTab('payments')">💳 Payments <span id="payments-badge" style="display:none;background:#dc2626;color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;margin-left:4px;font-weight:700"></span></button>
       <button class="sec-tab"        id="tab-report"        onclick="goTab('report')">📊 Report</button>
+      <button class="sec-tab"        id="tab-settings"      onclick="goTab('settings')" style="display:none">⚙️ Settings</button>
     </div>
 
     <!-- ADD -->
@@ -453,7 +477,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <div class="field" id="f-acct2-wrap" style="display:none"><label>Transfer To</label>
             <select id="f-acct2"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
           </div>
-          <div class="field" id="f-cat-wrap"><label>Category</label><select id="f-cat"></select></div>
+          <div class="field" id="f-cat-wrap"><label>Category</label><select id="f-cat" onchange="updateAddProjectField()"></select></div>
+          <div class="field" id="f-proj-wrap" style="display:none"><label>Project</label><select id="f-proj"></select></div>
           <div class="field" id="f-from-wrap"><label>Donor / From</label>
             <div class="autocomplete-wrap">
               <input type="text" id="f-from" placeholder="e.g. Juan dela Cruz"
@@ -461,6 +486,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
               <div class="autocomplete-list" id="ac-list"></div>
             </div>
           </div>
+          <div class="field" id="f-refby-wrap"><label>Referred By</label>
+            <input type="text" id="f-refby" placeholder="Who brought in this donor?"></div>
           <div class="field"><label>Reference No.</label>
             <input type="text" id="f-ref" placeholder="e.g. GCash ref #1234"></div>
           <div class="field"><label>Recorded By</label>
@@ -495,10 +522,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
     <!-- ACCOUNTS -->
     <div id="sec-accounts" style="display:none">
-      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
         <button class="acct-sel-btn active" id="asel-GCash"     onclick="selectAcct('GCash')">GCash</button>
         <button class="acct-sel-btn"        id="asel-EastWest"  onclick="selectAcct('EastWest')">EastWest</button>
         <button class="acct-sel-btn"        id="asel-ChinaBank" onclick="selectAcct('ChinaBank')">ChinaBank</button>
+        <button class="acct-sel-btn" id="acct-sort-btn" onclick="toggleAcctSort()" style="margin-left:auto">Date ↓</button>
       </div>
       <div class="panel" id="acct-book-panel">
         <div class="panel-title" id="acct-book-title">GCash Passbook</div>
@@ -562,17 +590,39 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       </div>
     </div>
 
+    <!-- SETTINGS -->
+    <div id="sec-settings" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Settings</div>
+        <div id="settings-body"><div class="tbl-empty">Loading...</div></div>
+      </div>
+    </div>
+
     <!-- REPORT -->
     <div id="sec-report" style="display:none">
-      <div class="panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-          <div class="panel-title" style="margin-bottom:0">Monthly Report</div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <select class="report-month-sel" id="r-month" onchange="renderReport()"></select>
-            <button class="btn-export" id="btn-export" onclick="exportExcel()">⬇ Export Excel</button>
+      <div class="sec-tabs" style="margin-bottom:14px">
+        <button class="sec-tab active" id="rtab-monthly"  onclick="goReportTab('monthly')">📅 Monthly</button>
+        <button class="sec-tab"        id="rtab-projects" onclick="goReportTab('projects')">📁 By Project</button>
+      </div>
+
+      <div id="rsec-monthly">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="panel-title" style="margin-bottom:0">Monthly Report</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select class="report-month-sel" id="r-month" onchange="renderReport()"></select>
+              <button class="btn-export" id="btn-export" onclick="exportExcel()">⬇ Export Excel</button>
+            </div>
           </div>
+          <div id="report-body"><div class="tbl-empty">Select a month above.</div></div>
         </div>
-        <div id="report-body"><div class="tbl-empty">Select a month above.</div></div>
+      </div>
+
+      <div id="rsec-projects" style="display:none">
+        <div class="panel">
+          <div class="panel-title">Project Performance</div>
+          <div id="proj-report-body"><div class="tbl-empty">Loading...</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -604,7 +654,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')"
       onkeydown="if(event.key==='Enter')doLogin()">
     <div class="pin-actions">
-      <button class="btn-cancel-pin" onclick="closePinModal()">Cancel</button>
+      <button class="btn-cancel-pin" id="pin-cancel-btn" onclick="closePinModal()">Cancel</button>
       <button class="btn-enter green" id="pin-enter-btn" onclick="doLogin()">Enter</button>
     </div>
     <div class="pin-err" id="pin-err"></div>
@@ -649,9 +699,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <div class="field" id="e-acct2-wrap"><label>Transfer To</label>
         <select id="e-acct2"><option>GCash</option><option>EastWest</option><option>ChinaBank</option></select>
       </div>
-      <div class="field" id="e-cat-wrap"><label>Category</label><select id="e-cat"></select></div>
+      <div class="field" id="e-cat-wrap"><label>Category</label><select id="e-cat" onchange="updateEditProjectField()"></select></div>
+      <div class="field" id="e-proj-wrap" style="display:none"><label>Project</label><select id="e-proj"></select></div>
       <div class="field" id="e-from-wrap"><label>Donor / From</label>
         <input type="text" id="e-from" placeholder="e.g. Juan dela Cruz"></div>
+      <div class="field" id="e-refby-wrap" style="display:none"><label>Referred By</label>
+        <input type="text" id="e-refby" placeholder="Who brought in this donor?"></div>
       <div class="field"><label>Reference No.</label><input type="text" id="e-ref"></div>
       <div class="field"><label>Recorded By</label><input type="text" id="e-by"></div>
       <div class="field full"><label>Description</label><textarea id="e-desc"></textarea></div>
@@ -686,6 +739,8 @@ var CFG = {
   ],
   incCats: ['Donations','Sponsorships','Ticket Sales','Fundraising Activity','Registration Fee','Other Income'],
   expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Miscellaneous Expense'],
+  projects: ['Legacy Run','Raffle','Movie','Merchandise Sales'],
+  projectTargets: {},
 };
 
 var FIREBASE_CFG = {
@@ -700,7 +755,7 @@ var FIREBASE_CFG = {
 /* ── STATE ── */
 var role = null, currentUser = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null, lastReportData = null;
 var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
-var selectedAcct = 'GCash';
+var selectedAcct = 'GCash', acctSortDir = 'desc', selectedProject = null;
 
 var TXN   = [];
 var AUDIT = [];
@@ -710,8 +765,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('f-date').value = today();
   fillCats('income');
   fillCatFilter();
-  renderPublic();
   setTimeout(initFirebase, 300);
+  openLoginModal();
 });
 
 function today()  { return new Date().toISOString().split('T')[0]; }
@@ -724,6 +779,7 @@ function qs(id)   { var e=el(id); return e?e.value||'':''; }
 
 function fillCats(type) {
   el('f-cat').innerHTML = (type==='income'?CFG.incCats:CFG.expCats).map(function(c){ return '<option>'+c+'</option>'; }).join('');
+  updateAddProjectField();
 }
 function fillCatFilter() {
   el('l-cat').innerHTML = '<option value="">All Categories</option>' +
@@ -743,9 +799,7 @@ function switchPage(pg) {
 }
 
 /* ── AUTH ── */
-function tapLogin() {
-  if (currentUser) { switchPage('dashboard'); return; }
-  // Build user buttons
+function openLoginModal() {
   var list = el('user-list');
   list.innerHTML = CFG.users.map(function(u,i){
     return '<button class="user-btn" id="ubtn-'+i+'" onclick="selectUser('+i+')">'
@@ -756,8 +810,14 @@ function tapLogin() {
   pendingRole = null;
   el('pin-in').value = '';
   el('pin-err').textContent = '';
+  var cancelBtn = el('pin-cancel-btn');
+  if (cancelBtn) cancelBtn.style.display = currentUser ? '' : 'none';
   el('pin-modal').classList.add('open');
-  setTimeout(function(){ el('pin-in').focus(); },100);
+  setTimeout(function(){ el('pin-in').focus(); }, 100);
+}
+function tapLogin() {
+  if (currentUser) { switchPage('dashboard'); return; }
+  openLoginModal();
 }
 function selectUser(i) {
   pendingRole = i;
@@ -777,9 +837,16 @@ function doLogin() {
     el('top-role-badge').innerHTML =
       '<span class="top-role-badge role-'+role+'">'+user.name
       +' <span style="opacity:.6;font-weight:400">('+role+')</span></span>';
-    var addTab = el('tab-add');
-    if (role==='auditor') { addTab.style.display='none'; goTab('ledger'); }
-    else                  { addTab.style.display=''; goTab('add'); el('f-by').value=user.name; }
+    var addTab = el('tab-add'), settingsTab = el('tab-settings');
+    if (role==='auditor') {
+      addTab.style.display='none';
+      if(settingsTab) settingsTab.style.display='none';
+      goTab('ledger');
+    } else {
+      addTab.style.display='';
+      if(settingsTab) settingsTab.style.display='';
+      goTab('add'); el('f-by').value=user.name;
+    }
     el('bar-logout').style.display='flex';
     el('bar-login').style.display='none';
     window.scrollTo(0,0);
@@ -793,7 +860,9 @@ function doLogout() {
   role=null; currentUser=null;
   el('bar-logout').style.display='none';
   el('bar-login').style.display='';
-  switchPage('public');
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.bar-btn').forEach(function(b){ b.classList.remove('active'); });
+  openLoginModal();
 }
 
 /* ── TXN TYPE ── */
@@ -805,15 +874,16 @@ function setType(t,btn) {
   if(t==='income'){
     fillCats('income');
     el('f-acct2-wrap').style.display='none'; el('f-cat-wrap').style.display='flex';
-    el('f-from-wrap').style.display='flex';  el('lbl-acct').textContent='Account';
+    el('f-from-wrap').style.display='flex'; el('f-refby-wrap').style.display='flex'; el('lbl-acct').textContent='Account';
   } else if(t==='expense'){
     fillCats('expense');
     el('f-acct2-wrap').style.display='none'; el('f-cat-wrap').style.display='flex';
-    el('f-from-wrap').style.display='none';  el('lbl-acct').textContent='Account Debited';
+    el('f-from-wrap').style.display='none'; el('f-refby-wrap').style.display='none'; el('lbl-acct').textContent='Account Debited';
   } else {
     el('f-acct2-wrap').style.display='flex'; el('f-cat-wrap').style.display='none';
-    el('f-from-wrap').style.display='none';  el('lbl-acct').textContent='From Account';
+    el('f-from-wrap').style.display='none'; el('f-refby-wrap').style.display='none'; el('lbl-acct').textContent='From Account';
   }
+  updateAddProjectField();
 }
 
 /* ── ADD TXN ── */
@@ -824,14 +894,16 @@ function addTxn() {
   var from=qs('f-from').trim(), ref=qs('f-ref').trim(), by=(qs('f-by').trim()||currentUser&&currentUser.name||''), desc=qs('f-desc').trim();
   if (!date||!amount||amount<=0) { alert('Enter a valid date and amount.'); return; }
   if (txnType==='transfer'&&acct===acct2) { alert('From and To accounts must differ.'); return; }
+  var proj=(txnType==='income'&&cat==='Fundraising Activity')||txnType==='expense'?(qs('f-proj')||null):null;
+  var refBy=txnType==='income'?(qs('f-refby').trim()||null):null;
   var t = { id:uid(), created_at:new Date().toISOString(), txn_date:date, type:txnType,
     amount:amount, account:acct, account_to:txnType==='transfer'?acct2:null, category:cat,
-    contributor:txnType==='income'?(from||null):null, ref_no:ref, recorded_by:by, description:desc };
+    contributor:txnType==='income'?(from||null):null, project:proj, ref_by:refBy, ref_no:ref, recorded_by:by, description:desc };
   var aEntry = { id:uid(), created_at:new Date().toISOString(), action:'add',
     detail:'Added P'+fmt(amount)+' '+txnType+' — '+cat+' — '+acct+(txnType==='transfer'?' to '+acct2:'')+' by '+(by||'?'),
     done_by:by||'Unknown' };
   function clearForm() {
-    ['f-amount','f-from','f-ref','f-desc'].forEach(function(id){ el(id).value=''; });
+    ['f-amount','f-from','f-refby','f-ref','f-desc'].forEach(function(id){ el(id).value=''; });
     el('f-date').value=today(); el('ac-list').classList.remove('open');
     var ok=el('ok-msg'); ok.style.display='block'; setTimeout(function(){ ok.style.display='none'; },3000);
   }
@@ -847,7 +919,9 @@ function addTxn() {
 /* ── RENDER ── */
 function renderAll() {
   renderLedger(); renderAudit(); renderContribs(); renderPublic(); if(selectedAcct) renderPassbook();
-  var rt=el('tab-report'); if(rt&&rt.classList.contains('active')) renderReport();
+  var rt=el('tab-report'); if(rt&&rt.classList.contains('active')) {
+    var rp=el('rsec-projects'); if(rp&&rp.style.display!=='none') renderProjectReport(); else renderReport();
+  }
 }
 
 function calcBal() {
@@ -939,11 +1013,13 @@ function renderLedger() {
       '<div class="lcard-row1"><div class="lcard-badges">'+
         '<span class="type-tag '+t.type+'">'+t.type+'</span>'+
         '<span class="cat-pill">'+(t.category||'—')+'</span>'+
+        (t.project?'<span class="proj-pill">'+t.project+'</span>':'')+
         '<span class="acct-tag">'+acctLabel+'</span>'+
       '</div><div class="lcard-amt '+t.type+'">'+(signs[t.type]||'')+'P'+fmt(t.amount)+'</div></div>'+
       '<div class="lcard-desc">'+(t.description||t.contributor||'No description')+'</div>'+
       '<div class="lcard-meta"><span>'+t.txn_date+'</span><span>Ref: '+(t.ref_no||'—')+'</span><span>By: '+(t.recorded_by||'—')+'</span></div>'+
       (t.contributor?'<div class="lcard-from">From: '+t.contributor+'</div>':'')+
+      (t.ref_by?'<div class="lcard-from" style="color:#7c3aed">Referred by: '+t.ref_by+'</div>':'')+
       '<div class="lcard-footer">'+editBtn+delBtn+'</div>'+
     '</div>';
   }).join('');
@@ -1046,12 +1122,15 @@ function triggerEdit(id){
   el('e-acct').value=t.account||'GCash';
   el('e-acct2').value=t.account_to||'GCash';
   el('e-from').value=t.contributor||'';
+  if(el('e-refby')) el('e-refby').value=t.ref_by||'';
   el('e-ref').value=t.ref_no||'';
   el('e-by').value=t.recorded_by||(currentUser?currentUser.name:'')||'';
   el('e-desc').value=t.description||'';
   fillEditCats(t.type);
   if(t.category) el('e-cat').value=t.category;
   updateEditFields(t.type);
+  updateEditProjectField();
+  if(t.project&&el('e-proj')) el('e-proj').value=t.project;
   el('edit-err').textContent='';
   el('edit-modal').classList.add('open');
 }
@@ -1065,10 +1144,12 @@ function setEditType(t,btn){
   document.querySelectorAll('#edit-type-row .type-btn').forEach(function(b){b.classList.remove('on');});
   btn.classList.add('on');
   fillEditCats(t); updateEditFields(t);
+  updateEditProjectField();
 }
 function updateEditFields(type){
   el('e-acct2-wrap').style.display=type==='transfer'?'flex':'none';
   el('e-from-wrap').style.display=type==='income'?'flex':'none';
+  if(el('e-refby-wrap')) el('e-refby-wrap').style.display=type==='income'?'flex':'none';
   el('e-lbl-acct').textContent=type==='transfer'?'From Account':type==='expense'?'Account Debited':'Account';
 }
 function closeEditModal(){el('edit-modal').classList.remove('open');pendingEdit=null;}
@@ -1081,9 +1162,11 @@ function doEdit(){
   if(!date||!amount||amount<=0){el('edit-err').textContent='Enter a valid date and amount.';return;}
   if(editTxnType==='transfer'&&acct===acct2){el('edit-err').textContent='From and To accounts must differ.';return;}
   var orig=TXN.find(function(x){return x.id===pendingEdit;});
+  var eProj=(editTxnType==='income'&&cat==='Fundraising Activity')||editTxnType==='expense'?(el('e-proj')&&el('e-proj').value.trim()||null):null;
+  var eRefBy=editTxnType==='income'?(el('e-refby')&&el('e-refby').value.trim()||null):null;
   var changes={txn_date:date,amount:amount,type:editTxnType,account:acct,
     account_to:editTxnType==='transfer'?acct2:null,category:cat,
-    contributor:editTxnType==='income'?(from||null):null,
+    contributor:editTxnType==='income'?(from||null):null,project:eProj,ref_by:eRefBy,
     ref_no:ref,recorded_by:by,description:desc};
   var aEntry={id:uid(),created_at:new Date().toISOString(),action:'edit',
     detail:'Edited txn — cat: '+(orig?orig.category:'?')+' → '+cat+(orig&&orig.amount!==amount?' | amt: P'+fmt(orig.amount)+' → P'+fmt(amount):'')+' by '+(by||'?'),
@@ -1157,6 +1240,7 @@ function _startFirebase(){
     if(status){status.textContent='Connecting...';status.style.color='#f59e0b';}
     listenFundData();
     listenPayments();
+    listenSettings();
   }catch(e){
     console.error('Firebase init error:',e);
     if(status){status.textContent='Offline';status.style.color='#dc2626';}
@@ -1357,9 +1441,16 @@ function selectAcct(acct){
   el('asel-'+acct).classList.add('active');
   renderPassbook();
 }
+function toggleAcctSort(){
+  acctSortDir=acctSortDir==='asc'?'desc':'asc';
+  var btn=el('acct-sort-btn');
+  if(btn) btn.textContent='Date '+(acctSortDir==='asc'?'↑':'↓');
+  renderPassbook();
+}
 function renderPassbook(){
   var acct=selectedAcct;
   el('acct-book-title').textContent=acct+' Passbook';
+  // Always compute running balance chronologically (asc), then reverse if needed
   var rows=TXN.filter(function(t){return t.account===acct||t.account_to===acct;})
     .slice().sort(function(a,b){return a.txn_date>b.txn_date?1:a.txn_date<b.txn_date?-1:0;});
   var totalIn=0,totalOut=0;
@@ -1378,14 +1469,20 @@ function renderPassbook(){
   var body=el('acct-book-body'),empty=el('acct-book-empty');
   if(!rows.length){body.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
+  // Attach running balance to each row in chronological order
   var runBal=0;
-  body.innerHTML=rows.map(function(t){
+  var rowsWithBal=rows.map(function(t){
     var isCredit=(t.type==='income')||(t.type==='transfer'&&t.account_to===acct);
     var isDebit =(t.type==='expense')||(t.type==='transfer'&&t.account===acct);
     if(isCredit) runBal+=t.amount;
     if(isDebit)  runBal-=t.amount;
-    var creditCell=isCredit?'<span class="ab-credit">+P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
-    var debitCell =isDebit ?'<span class="ab-debit">−P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
+    return {t:t,isCredit:isCredit,isDebit:isDebit,runBal:runBal};
+  });
+  if(acctSortDir==='desc') rowsWithBal=rowsWithBal.slice().reverse();
+  body.innerHTML=rowsWithBal.map(function(r){
+    var t=r.t;
+    var creditCell=r.isCredit?'<span class="ab-credit">+P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
+    var debitCell =r.isDebit ?'<span class="ab-debit">−P'+fmt(t.amount)+'</span>':'<span style="color:#ddd">—</span>';
     var descHtml='<div class="ab-desc">'+(t.description||t.contributor||'—')+'</div>';
     if(t.type==='transfer'){var arrow=t.account===acct?'To: '+t.account_to:'From: '+t.account;descHtml+='<span class="ab-transfer-tag">Transfer '+arrow+'</span>';}
     else{descHtml+='<span class="ab-cat">'+(t.category||'—')+'</span>';}
@@ -1396,7 +1493,7 @@ function renderPassbook(){
       '<td><span class="ab-ref">'+(t.ref_no||'—')+'</span></td>'+
       '<td style="text-align:right">'+creditCell+'</td>'+
       '<td style="text-align:right">'+debitCell+'</td>'+
-      '<td class="'+(runBal<0?'ab-bal neg':'ab-bal')+'">P'+fmt(runBal)+'</td>'+
+      '<td class="'+(r.runBal<0?'ab-bal neg':'ab-bal')+'">P'+fmt(r.runBal)+'</td>'+
     '</tr>';
   }).join('');
 }
@@ -1506,6 +1603,23 @@ function renderReport() {
   });
 }
 
+function drillItemHtml(t, color, sign) {
+  var label=t.contributor||t.description||'—';
+  var meta=[];
+  if(t.account) meta.push(t.account);
+  if(t.ref_no)  meta.push('Ref: '+t.ref_no);
+  if(t.ref_by)  meta.push('Referred by: '+t.ref_by);
+  if(t.recorded_by) meta.push('By: '+t.recorded_by);
+  return '<div class="drill-item">'+
+    '<div class="drill-left">'+
+      '<div class="drill-date">'+t.txn_date+'</div>'+
+      '<div class="drill-desc">'+label+'</div>'+
+      (meta.length?'<div class="drill-meta">'+meta.join(' · ')+'</div>':'')+
+    '</div>'+
+    '<div class="drill-amt" style="color:'+color+'">'+sign+'₱'+fmt(t.amount)+'</div>'+
+  '</div>';
+}
+
 function toggleDrillDown(row) {
   var next=row.nextElementSibling;
   if(next&&next.classList.contains('report-drill-row')){
@@ -1523,21 +1637,47 @@ function toggleDrillDown(row) {
   if(!txns.length){
     inner+='<div style="color:#aaa;font-size:12px;padding:8px 0">No transactions found.</div>';
   } else {
-    inner+=txns.map(function(t){
-      var label=t.contributor||t.description||'—';
-      var meta=[];
-      if(t.account) meta.push(t.account);
-      if(t.ref_no)  meta.push('Ref: '+t.ref_no);
-      if(t.recorded_by) meta.push('By: '+t.recorded_by);
-      return '<div class="drill-item">'+
-        '<div class="drill-left">'+
-          '<div class="drill-date">'+t.txn_date+'</div>'+
-          '<div class="drill-desc">'+label+'</div>'+
-          (meta.length?'<div class="drill-meta">'+meta.join(' · ')+'</div>':'')+
-        '</div>'+
-        '<div class="drill-amt" style="color:'+color+'">'+sign+'₱'+fmt(t.amount)+'</div>'+
-      '</div>';
-    }).join('');
+    var projOrder=[], projMap={}, noProj=[];
+    txns.forEach(function(t){
+      if(t.project){
+        if(!projMap[t.project]){projMap[t.project]={total:0,txns:[]};projOrder.push(t.project);}
+        projMap[t.project].total+=t.amount; projMap[t.project].txns.push(t);
+      } else { noProj.push(t); }
+    });
+    if(projOrder.length){
+      projOrder.forEach(function(proj){
+        var g=projMap[proj];
+        var cnt=g.txns.length+' entr'+(g.txns.length===1?'y':'ies');
+        inner+=
+          '<div class="drill-proj-hdr">'+
+            '<span class="drill-chev drill-proj-chev">▶</span>'+
+            '<span class="proj-pill">'+proj+'</span>'+
+            '<span style="flex:1"></span>'+
+            '<span style="font-size:11px;color:#aaa;margin-right:8px">'+cnt+'</span>'+
+            '<span style="font-family:monospace;font-weight:700;color:'+color+'">'+sign+'₱'+fmt(g.total)+'</span>'+
+          '</div>'+
+          '<div class="drill-proj-body" style="display:none">'+
+            g.txns.map(function(t){return drillItemHtml(t,color,sign);}).join('')+
+          '</div>';
+      });
+      if(noProj.length){
+        var nTotal=noProj.reduce(function(s,t){return s+t.amount;},0);
+        var nCnt=noProj.length+' entr'+(noProj.length===1?'y':'ies');
+        inner+=
+          '<div class="drill-proj-hdr">'+
+            '<span class="drill-chev drill-proj-chev">▶</span>'+
+            '<span style="font-size:11px;font-weight:600;color:#999">Untagged</span>'+
+            '<span style="flex:1"></span>'+
+            '<span style="font-size:11px;color:#aaa;margin-right:8px">'+nCnt+'</span>'+
+            '<span style="font-family:monospace;font-weight:700;color:'+color+'">'+sign+'₱'+fmt(nTotal)+'</span>'+
+          '</div>'+
+          '<div class="drill-proj-body" style="display:none">'+
+            noProj.map(function(t){return drillItemHtml(t,color,sign);}).join('')+
+          '</div>';
+      }
+    } else {
+      inner+=txns.map(function(t){return drillItemHtml(t,color,sign);}).join('');
+    }
   }
   inner+='</div>';
   var dr=document.createElement('tr');
@@ -1545,6 +1685,16 @@ function toggleDrillDown(row) {
   dr.innerHTML='<td colspan="3" class="report-drill-td">'+inner+'</td>';
   row.parentNode.insertBefore(dr,row.nextSibling);
   row.classList.add('expanded');
+  dr.querySelectorAll('.drill-proj-hdr').forEach(function(h){
+    h.addEventListener('click',function(){
+      var body=h.nextElementSibling;
+      if(!body||!body.classList.contains('drill-proj-body')) return;
+      var open=body.style.display!=='none';
+      body.style.display=open?'none':'block';
+      var chev=h.querySelector('.drill-proj-chev');
+      if(chev){chev.style.transform=open?'':'rotate(90deg)';chev.style.color=open?'#aaa':'#2563eb';}
+    });
+  });
 }
 
 function exportExcel() {
@@ -1599,9 +1749,321 @@ function exportExcel() {
   XLSX.writeFile(wb,'SSA-Fund-'+month+'.xlsx');
 }
 
+/* ── SETTINGS ── */
+function fillProjSel(selId) {
+  var sel=el(selId); if(!sel) return;
+  sel.innerHTML='<option value="">— No Project —</option>'+CFG.projects.map(function(p){return'<option>'+p+'</option>';}).join('');
+}
+function updateAddProjectField() {
+  var show=(txnType==='income'&&qs('f-cat')==='Fundraising Activity')||txnType==='expense';
+  var wrap=el('f-proj-wrap'); if(wrap) wrap.style.display=show?'flex':'none';
+  if(show) fillProjSel('f-proj');
+}
+function updateEditProjectField() {
+  var show=(editTxnType==='income'&&el('e-cat')&&el('e-cat').value==='Fundraising Activity')||editTxnType==='expense';
+  var wrap=el('e-proj-wrap'); if(wrap) wrap.style.display=show?'flex':'none';
+  if(show) fillProjSel('e-proj');
+}
+function listenSettings() {
+  if(!db) return;
+  db.collection('fund_config').doc('app').onSnapshot(function(doc){
+    if(doc.exists){
+      var data=doc.data();
+      if(data.incCats&&data.incCats.length) CFG.incCats=data.incCats;
+      if(data.expCats&&data.expCats.length) CFG.expCats=data.expCats;
+      if(data.projects) CFG.projects=data.projects;
+      if(data.projectTargets) CFG.projectTargets=data.projectTargets;
+    }
+    renderSettings();
+  },function(){renderSettings();});
+}
+function saveSettingsToFirestore() {
+  if(!db) return;
+  db.collection('fund_config').doc('app').set({incCats:CFG.incCats,expCats:CFG.expCats,projects:CFG.projects,projectTargets:CFG.projectTargets})
+    .catch(function(e){console.error('Settings save error:',e);});
+}
+function renderSettings() {
+  fillCatFilter();
+  var body=el('settings-body'); if(!body) return;
+  function listHtml(type,arr) {
+    if(!arr.length) return '<div style="color:#aaa;font-size:12px;padding:6px 0">None yet.</div>';
+    return arr.map(function(item){
+      var safe=item.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return '<div class="settings-item">'+
+        '<span class="settings-item-name">'+item+'</span>'+
+        '<button class="settings-item-edit" onclick="editCatItem(\''+type+'\',\''+safe+'\')">✏</button>'+
+        '<button class="settings-item-del" onclick="removeCatItem(\''+type+'\',\''+safe+'\')">×</button>'+
+      '</div>';
+    }).join('');
+  }
+  function projHtml(arr) {
+    if(!arr.length) return '<div style="color:#aaa;font-size:12px;padding:6px 0">None yet.</div>';
+    return arr.map(function(item){
+      var safe=item.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      var tgt=(CFG.projectTargets&&CFG.projectTargets[item])||{};
+      var tgtLine=tgt.targetIncome||tgt.targetExpense
+        ?'<div style="font-size:11px;color:#888;margin-top:2px">'+
+            'Target income: ₱'+fmt(tgt.targetIncome||0)+' · Budget expense: ₱'+fmt(tgt.targetExpense||0)+
+          '</div>'
+        :'';
+      return '<div class="settings-item" data-projname="'+item+'">'+
+        '<span class="settings-item-name"><span>'+item+'</span>'+tgtLine+'</span>'+
+        '<button class="settings-item-edit" onclick="editProjectItem(\''+safe+'\')">✏</button>'+
+        '<button class="settings-item-del" onclick="removeProjectItem(\''+safe+'\')">×</button>'+
+      '</div>';
+    }).join('');
+  }
+  body.innerHTML=
+    '<div class="settings-section">'+
+      '<div class="settings-section-title">Income Categories</div>'+
+      listHtml('inc',CFG.incCats)+
+      '<div class="settings-add-row">'+
+        '<input class="settings-add-input" id="new-inc-cat" placeholder="New income category..." onkeydown="if(event.key===\'Enter\')addCatItem(\'inc\')">'+
+        '<button class="settings-add-btn" onclick="addCatItem(\'inc\')">Add</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="settings-section">'+
+      '<div class="settings-section-title">Expense Categories</div>'+
+      listHtml('exp',CFG.expCats)+
+      '<div class="settings-add-row">'+
+        '<input class="settings-add-input" id="new-exp-cat" placeholder="New expense category..." onkeydown="if(event.key===\'Enter\')addCatItem(\'exp\')">'+
+        '<button class="settings-add-btn" onclick="addCatItem(\'exp\')">Add</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="settings-section">'+
+      '<div class="settings-section-title">Fundraising Projects</div>'+
+      '<div class="settings-section-sub">Tagged on income when category is "Fundraising Activity". Shows up in the ledger and drill-down report.</div>'+
+      projHtml(CFG.projects)+
+      '<div class="settings-add-row">'+
+        '<input class="settings-add-input" id="new-proj" placeholder="New project name..." onkeydown="if(event.key===\'Enter\')addProjectItem()">'+
+        '<button class="settings-add-btn" onclick="addProjectItem()">Add</button>'+
+      '</div>'+
+    '</div>';
+}
+function addCatItem(type) {
+  var inp=el('new-'+type+'-cat'), name=inp?inp.value.trim():''; if(!name) return;
+  var arr=type==='inc'?CFG.incCats:CFG.expCats;
+  if(arr.indexOf(name)!==-1){alert('"'+name+'" already exists.');return;}
+  arr.push(name); if(inp) inp.value='';
+  saveSettingsToFirestore(); renderSettings();
+  fillCats(txnType);
+}
+function removeCatItem(type,name) {
+  if(!confirm('Remove "'+name+'"?')) return;
+  var arr=type==='inc'?CFG.incCats:CFG.expCats;
+  var idx=arr.indexOf(name); if(idx!==-1) arr.splice(idx,1);
+  saveSettingsToFirestore(); renderSettings();
+  fillCats(txnType);
+}
+function addProjectItem() {
+  var inp=el('new-proj'), name=inp?inp.value.trim():''; if(!name) return;
+  if(CFG.projects.indexOf(name)!==-1){alert('"'+name+'" already exists.');return;}
+  CFG.projects.push(name); if(inp) inp.value='';
+  saveSettingsToFirestore(); renderSettings();
+}
+function removeProjectItem(name) {
+  if(!confirm('Remove project "'+name+'"?')) return;
+  var idx=CFG.projects.indexOf(name); if(idx!==-1) CFG.projects.splice(idx,1);
+  if(CFG.projectTargets) delete CFG.projectTargets[name];
+  saveSettingsToFirestore(); renderSettings();
+}
+function editCatItem(type, oldName) {
+  var items=document.querySelectorAll('.settings-item');
+  for(var i=0;i<items.length;i++){
+    var nameEl=items[i].querySelector('.settings-item-name');
+    if(nameEl&&nameEl.textContent===oldName){
+      var safe=oldName.replace(/"/g,'&quot;').replace(/'/g,"\'");
+      items[i].innerHTML=
+        '<input class="settings-add-input" style="flex:1;margin:0" id="edit-cat-inp" value="'+safe+'" onkeydown="if(event.key===\'Enter\')saveCatEdit(\''+type.replace(/'/g,"\'")+'\')" >'+
+        '<button class="settings-add-btn" onclick="saveCatEdit(\''+type.replace(/'/g,"\\'")+'\')" >Save</button>'+
+        '<button class="settings-item-del" onclick="renderSettings()">✕</button>';
+      var inp=document.getElementById('edit-cat-inp'); if(inp){inp.focus();inp.select();}
+      return;
+    }
+  }
+}
+function saveCatEdit(type) {
+  var inp=document.getElementById('edit-cat-inp'); if(!inp) return;
+  var newName=inp.value.trim(); if(!newName) return;
+  var arr=type==='inc'?CFG.incCats:CFG.expCats;
+  var oldName=inp.getAttribute('data-old')||inp.defaultValue;
+  // find current item by position — the input replaced the name span so look at parent
+  var item=inp.closest('.settings-item');
+  if(!item){renderSettings();return;}
+  // determine old name from defaultValue (the original value attribute)
+  oldName=inp.defaultValue;
+  if(newName===oldName){renderSettings();return;}
+  if(arr.indexOf(newName)!==-1){alert('"'+newName+'" already exists.');return;}
+  var idx=arr.indexOf(oldName); if(idx!==-1) arr[idx]=newName;
+  saveSettingsToFirestore(); renderSettings(); fillCats(txnType);
+}
+function editProjectItem(oldName) {
+  var tgt=(CFG.projectTargets&&CFG.projectTargets[oldName])||{};
+  var items=document.querySelectorAll('.settings-item[data-projname]');
+  for(var i=0;i<items.length;i++){
+    if(items[i].getAttribute('data-projname')===oldName){
+      var safe=oldName.replace(/"/g,'&quot;').replace(/'/g,"\'");
+      items[i].innerHTML=
+        '<div style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0">'+
+          '<input class="settings-add-input" style="margin:0" id="edit-proj-name" value="'+safe+'" placeholder="Project name">'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+            '<input class="settings-add-input" style="margin:0;flex:1;min-width:120px" id="edit-proj-inc" type="number" value="'+(tgt.targetIncome||'')+'" placeholder="Target income ₱" min="0" step="1">'+
+            '<input class="settings-add-input" style="margin:0;flex:1;min-width:120px" id="edit-proj-exp" type="number" value="'+(tgt.targetExpense||'')+'" placeholder="Budget expense ₱" min="0" step="1">'+
+          '</div>'+
+        '</div>'+
+        '<button class="settings-add-btn" style="align-self:flex-start;white-space:nowrap" onclick="saveProjEdit(\''+safe+'\')">Save</button>'+
+        '<button class="settings-item-del" style="align-self:flex-start" onclick="renderSettings()">✕</button>';
+      var inp=document.getElementById('edit-proj-name'); if(inp){inp.focus();inp.select();}
+      return;
+    }
+  }
+}
+function saveProjEdit(oldName) {
+  var nameInp=document.getElementById('edit-proj-name');
+  var incInp=document.getElementById('edit-proj-inc');
+  var expInp=document.getElementById('edit-proj-exp');
+  if(!nameInp) return;
+  var newName=nameInp.value.trim(); if(!newName) return;
+  var targetIncome=parseFloat(incInp&&incInp.value)||0;
+  var targetExpense=parseFloat(expInp&&expInp.value)||0;
+  if(!CFG.projectTargets) CFG.projectTargets={};
+  if(newName!==oldName){
+    if(CFG.projects.indexOf(newName)!==-1){alert('"'+newName+'" already exists.');return;}
+    var idx=CFG.projects.indexOf(oldName); if(idx!==-1) CFG.projects[idx]=newName;
+    if(CFG.projectTargets[oldName]) CFG.projectTargets[newName]=CFG.projectTargets[oldName];
+    delete CFG.projectTargets[oldName];
+  }
+  CFG.projectTargets[newName]={targetIncome:targetIncome,targetExpense:targetExpense};
+  saveSettingsToFirestore(); renderSettings();
+}
+
+/* ── REPORT SUB-TABS ── */
+function goReportTab(tab) {
+  el('rsec-monthly').style.display  = tab==='monthly'  ? 'block' : 'none';
+  el('rsec-projects').style.display = tab==='projects' ? 'block' : 'none';
+  el('rtab-monthly').classList.toggle('active',  tab==='monthly');
+  el('rtab-projects').classList.toggle('active', tab==='projects');
+  if (tab==='projects') renderProjectReport();
+  if (tab==='monthly')  renderReport();
+}
+
+function renderProjectReport() {
+  var body = el('proj-report-body'); if (!body) return;
+  var projMap = {};
+  TXN.forEach(function(t) {
+    if (!t.project) return;
+    if (!projMap[t.project]) projMap[t.project] = {name:t.project,income:0,expense:0,txns:[]};
+    if (t.type==='income')  projMap[t.project].income  += t.amount;
+    if (t.type==='expense') projMap[t.project].expense += t.amount;
+    projMap[t.project].txns.push(t);
+  });
+  var projects = Object.keys(projMap).map(function(k){return projMap[k];});
+  projects.sort(function(a,b){return (b.income-b.expense)-(a.income-a.expense);});
+  if (!projects.length) {
+    body.innerHTML='<div class="tbl-empty">No project-tagged transactions yet.<br><span style="font-size:12px">Tag a transaction by choosing "Fundraising Activity" or any expense and selecting a project.</span></div>';
+    return;
+  }
+  // Reset selection if project no longer exists
+  if (selectedProject && !projMap[selectedProject]) selectedProject = null;
+  // Project selector buttons
+  var selectorHtml='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">'+
+    '<button class="acct-sel-btn'+(selectedProject===null?' active':'')+'" onclick="selectProject(null)">All</button>';
+  projects.forEach(function(p){
+    selectorHtml+='<button class="acct-sel-btn'+(selectedProject===p.name?' active':'')+'" onclick="selectProject(\''+p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'+p.name+'</button>';
+  });
+  selectorHtml+='</div>';
+  var html=selectorHtml;
+  var displayProjects=selectedProject?projects.filter(function(p){return p.name===selectedProject;}):projects;
+  // Combined summary when showing all
+  if (!selectedProject) {
+    var tInc=projects.reduce(function(s,p){return s+p.income;},0);
+    var tExp=projects.reduce(function(s,p){return s+p.expense;},0);
+    var tNet=tInc-tExp;
+    html+='<div class="report-section"><div class="report-section-title">All Projects Combined</div>'+
+      '<div class="report-bal-grid" style="grid-template-columns:repeat(2,1fr)">'+
+      '<div class="report-bal-card"><div class="rb-label">Total Income</div><div class="rb-close" style="color:#16a34a">+₱'+fmt(tInc)+'</div></div>'+
+      '<div class="report-bal-card"><div class="rb-label">Total Expenses</div><div class="rb-close" style="color:#dc2626">−₱'+fmt(tExp)+'</div></div>'+
+      '</div>'+
+      '<div style="background:'+(tNet>=0?'#f0fdf4':'#fef2f2')+';border:1px solid '+(tNet>=0?'#bbf7d0':'#fecaca')+';border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
+        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#888">Combined Net</div>'+
+        '<div style="font-size:20px;font-weight:700;font-family:monospace;color:'+(tNet>=0?'#16a34a':'#dc2626')+'">'+(tNet>=0?'+':'−')+'₱'+fmt(Math.abs(tNet))+'</div>'+
+      '</div></div>';
+  }
+  displayProjects.forEach(function(p) {
+    var net=p.income-p.expense;
+    var pct=p.income>0?Math.round(net/p.income*100):0;
+    var tgt=(CFG.projectTargets&&CFG.projectTargets[p.name])||{};
+    var targetInc=parseFloat(tgt.targetIncome)||0;
+    var targetExp=parseFloat(tgt.targetExpense)||0;
+    var incPct=targetInc>0?Math.round(p.income/targetInc*100):null;
+    var expPct=targetExp>0?Math.round(p.expense/targetExp*100):null;
+    var projNet=targetInc||targetExp?targetInc-targetExp:null;
+    var incCard='<div class="report-bal-card">'+
+      '<div class="rb-label">Income'+(targetInc?' vs Target':'')+'</div>'+
+      '<div class="rb-close" style="color:#16a34a">+₱'+fmt(p.income)+'</div>'+
+      (targetInc?
+        '<div style="font-size:11px;color:#888;margin-top:3px">Target ₱'+fmt(targetInc)+(incPct!==null?' · '+incPct+'%':'')+'</div>'+
+        '<div style="height:3px;background:#e0e0e0;border-radius:3px;margin-top:5px;overflow:hidden">'+
+          '<div style="height:100%;width:'+Math.min(incPct||0,100)+'%;background:'+(incPct>=100?'#16a34a':'#2563eb')+';border-radius:3px"></div></div>'
+        :'')+
+    '</div>';
+    var expCard='<div class="report-bal-card">'+
+      '<div class="rb-label">Expenses'+(targetExp?' vs Budget':'')+'</div>'+
+      '<div class="rb-close" style="color:#dc2626">−₱'+fmt(p.expense)+'</div>'+
+      (targetExp?
+        '<div style="font-size:11px;color:#888;margin-top:3px">Budget ₱'+fmt(targetExp)+(expPct!==null?' · '+expPct+'%':'')+'</div>'+
+        '<div style="height:3px;background:#e0e0e0;border-radius:3px;margin-top:5px;overflow:hidden">'+
+          '<div style="height:100%;width:'+Math.min(expPct||0,100)+'%;background:'+(expPct>100?'#dc2626':expPct>80?'#f59e0b':'#16a34a')+';border-radius:3px"></div></div>'
+        :'')+
+    '</div>';
+    var netCard='<div class="report-bal-card" style="background:'+(net>=0?'#f0fdf4':'#fef2f2')+'">'+
+      '<div class="rb-label">Net'+(p.income>0?' ('+pct+'%)':'')+'</div>'+
+      '<div class="rb-close" style="color:'+(net>=0?'#16a34a':'#dc2626')+'">'+(net>=0?'+':'−')+'₱'+fmt(Math.abs(net))+'</div>'+
+      (projNet!==null?'<div style="font-size:11px;color:#888;margin-top:3px">Target net: '+(projNet>=0?'+':'−')+'₱'+fmt(Math.abs(projNet))+'</div>':'')+
+    '</div>';
+    html+='<div class="report-section" style="border-top:2px solid #e0e0e0;padding-top:16px">'+
+      '<div class="report-section-title">'+p.name+
+        '<span style="float:right;font-size:11px;font-weight:400;color:#aaa">'+p.txns.length+' transaction'+(p.txns.length===1?'':'s')+'</span>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+
+        incCard+expCard+netCard+
+      '</div>';
+    var sorted=p.txns.slice().sort(function(a,b){return a.txn_date>b.txn_date?1:-1;});
+    html+='<table class="report-table"><thead><tr>'+
+      '<th>Date</th><th>Type</th><th>Category</th><th>Description / Contributor</th><th style="text-align:right">Amount</th>'+
+    '</tr></thead><tbody>';
+    sorted.forEach(function(t){
+      var isInc=t.type==='income', color=isInc?'#16a34a':'#dc2626', sign=isInc?'+':'−';
+      var label=t.contributor||t.description||'—';
+      html+='<tr>'+
+        '<td><span class="ab-date">'+t.txn_date+'</span></td>'+
+        '<td><span class="type-tag '+t.type+'">'+t.type+'</span></td>'+
+        '<td><span class="cat-pill">'+(t.category||'—')+'</span></td>'+
+        '<td style="font-size:12px;color:#555">'+label+(t.ref_by?'<div style="font-size:10px;color:#7c3aed;margin-top:2px">Ref by: '+t.ref_by+'</div>':'')+'</td>'+
+        '<td style="text-align:right;font-family:monospace;font-weight:700;color:'+color+'">'+sign+'₱'+fmt(t.amount)+'</td>'+
+      '</tr>';
+    });
+    var subInc=sorted.filter(function(t){return t.type==='income';}).reduce(function(s,t){return s+t.amount;},0);
+    var subExp=sorted.filter(function(t){return t.type==='expense';}).reduce(function(s,t){return s+t.amount;},0);
+    html+='<tr class="total-row">'+
+      '<td colspan="4"><strong>Total</strong></td>'+
+      '<td style="text-align:right;font-family:monospace">'+
+        (subInc?'<span style="color:#16a34a">+₱'+fmt(subInc)+'</span>':'')+
+        (subInc&&subExp?' / ':'')+
+        (subExp?'<span style="color:#dc2626">−₱'+fmt(subExp)+'</span>':'')+
+      '</td></tr>';
+    html+='</tbody></table></div>';
+  });
+  body.innerHTML=html;
+}
+function selectProject(name) {
+  selectedProject=name;
+  renderProjectReport();
+}
+
 /* ── TABS ── */
 function goTab(tab){
-  ['add','ledger','accounts','contributors','audit','payments','report'].forEach(function(t){
+  ['add','ledger','accounts','contributors','audit','payments','report','settings'].forEach(function(t){
     var s=el('sec-'+t); if(s) s.style.display=t===tab?'block':'none';
     var b=el('tab-'+t); if(b) b.classList.toggle('active',t===tab);
   });
@@ -1612,6 +2074,7 @@ function goTab(tab){
   if(tab==='audit')        renderAudit();
   if(tab==='payments')     {if(!db) initFirebase(); renderPayments();}
   if(tab==='report')       renderReport();
+  if(tab==='settings')     renderSettings();
 }
 </script>
 </body>
