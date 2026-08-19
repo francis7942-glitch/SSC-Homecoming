@@ -1228,12 +1228,13 @@ function clearAdminSearch() {
 }
 
 function renderAdminStats() {
-  const total=adminRegs.length;
-  const paid=adminRegs.filter(r=>r.status==='paid').length;
-  const pend=adminRegs.filter(r=>r.status==='pending').length;
+  const visibleRegs=adminRegs.filter(r=>r.type!=='group_slot');
+  const total=visibleRegs.length;
+  const paid=visibleRegs.filter(r=>r.status==='paid').length;
+  const pend=visibleRegs.filter(r=>r.status==='pending').length;
   const ck=adminRegs.filter(r=>r.checkedIn).length;
   const vt=adminRegs.filter(r=>r.voted).length;
-  const rej=adminRegs.filter(r=>r.status==='rejected').length;
+  const rej=visibleRegs.filter(r=>r.status==='rejected').length;
   const f = adminActiveFilter;
   const items = [
     {l:'All',n:total,      k:'all',     c:'var(--navy)'},
@@ -1263,6 +1264,7 @@ function renderAdminRegs() {
   if(clearBtn) clearBtn.style.display = search ? 'block' : 'none';
 
   const filtered = adminRegs.filter(r => {
+    if (r.type === 'group_slot' && f !== 'checkin' && f !== 'voted') return false;
     const text = `${r.firstName} ${r.lastName} ${r.email} ${r.id} ${r.batch} ${r.phone}`.toLowerCase();
     const matchSearch = !search || text.includes(search);
     const matchFilter = f === 'all'

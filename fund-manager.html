@@ -1292,17 +1292,18 @@ function listenPayments(){
   });
 }
 function updatePaymentsBadge(){
-  var pending=allRegistrations.filter(function(r){return r.status==='pending';}).length;
+  var pending=allRegistrations.filter(function(r){return r.status==='pending'&&r.type!=='group_slot';}).length;
   var badge=el('payments-badge');
   if(pending>0){badge.textContent=pending;badge.style.display='inline';}
   else badge.style.display='none';
 }
 function setPayFilter(f){paymentFilter=f;renderPayments();}
 function renderPayments(){
-  var pCount=allRegistrations.filter(function(r){return r.status==='pending';}).length;
-  var apCount=allRegistrations.filter(function(r){return r.status==='paid';}).length;
-  var rejCount=allRegistrations.filter(function(r){return r.status==='rejected';}).length;
-  var filtered=allRegistrations.filter(function(r){
+  var visibleRegs=allRegistrations.filter(function(r){return r.type!=='group_slot';});
+  var pCount=visibleRegs.filter(function(r){return r.status==='pending';}).length;
+  var apCount=visibleRegs.filter(function(r){return r.status==='paid';}).length;
+  var rejCount=visibleRegs.filter(function(r){return r.status==='rejected';}).length;
+  var filtered=visibleRegs.filter(function(r){
     if(paymentFilter==='pending') return r.status==='pending';
     if(paymentFilter==='paid')    return r.status==='paid';
     if(paymentFilter==='rejected')return r.status==='rejected';
@@ -1310,15 +1311,16 @@ function renderPayments(){
   });
   var pEl=el('payments-list');
   if(!db){pEl.innerHTML='<div class="tbl-empty">Firebase not connected.</div>';return;}
-  if(!allRegistrations.length){pEl.innerHTML='<div class="tbl-empty">No registrations found.</div>';return;}
+  if(!visibleRegs.length){pEl.innerHTML='<div class="tbl-empty">No registrations found.</div>';return;}
   var filterHtml='<div class="p-filter-row">'+
     '<button class="p-filter-btn'+(paymentFilter==="pending"?' on':'')+'" data-filter="pending">Pending ('+pCount+')</button>'+
     '<button class="p-filter-btn'+(paymentFilter==="paid"?' on':'')+'" data-filter="paid">Approved ('+apCount+')</button>'+
     '<button class="p-filter-btn'+(paymentFilter==="rejected"?' on':'')+'" data-filter="rejected">Rejected ('+rejCount+')</button>'+
-    '<button class="p-filter-btn'+(paymentFilter==="all"?' on':'')+'" data-filter="all">All ('+allRegistrations.length+')</button>'+
+    '<button class="p-filter-btn'+(paymentFilter==="all"?' on':'')+'" data-filter="all">All ('+visibleRegs.length+')</button>'+
   '</div>';
   if(!filtered.length){pEl.innerHTML=filterHtml+'<div class="tbl-empty">No '+paymentFilter+' registrations.</div>';return;}
   pEl.innerHTML=filterHtml+filtered.map(function(r){
+    var isGroup=r.type==='group';
     var name=((r.firstName||'')+' '+(r.lastName||'')).trim()||'Unknown';
     var isPending=r.status==='pending';
     var statusCls=r.status==='paid'?'paid':r.status==='rejected'?'rejected':'pending';
@@ -1331,20 +1333,24 @@ function renderPayments(){
     if(r.createdAt&&r.createdAt.toDate){try{dateStr=r.createdAt.toDate().toLocaleString('en-PH',{dateStyle:'medium',timeStyle:'short'});}catch(e){}}
     else if(r.createdAt&&typeof r.createdAt==='string'){try{dateStr=new Date(r.createdAt).toLocaleString('en-PH',{dateStyle:'medium',timeStyle:'short'});}catch(e){dateStr=r.createdAt;}}
     var regFee;
-    if(r.registrationFee) regFee=r.registrationFee;
+    if(isGroup)            regFee=r.totalFee||((r.groupQty||0)*(r.feePerPerson||0));
+    else if(r.registrationFee) regFee=r.registrationFee;
     else if(r.amount)     regFee=r.amount;
     else if(r.fee)        regFee=r.fee;
     else{var rd='';if(r.createdAt&&r.createdAt.toDate){try{rd=r.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(r.createdAt){rd=(r.createdAt+'').split('T')[0];}regFee=(rd&&rd<='2026-09-30')?850:1000;}
     var html='<div class="pcard '+(r.status==='paid'?'approved':r.status==='rejected'?'rejected':'')+'">';
-    html+='<div class="pcard-top"><div><div class="pcard-name">'+name+'</div><div class="pcard-batch">Batch '+(r.batch||'—')+' · '+(r.id||'')+'</div></div>';
-    html+='<div style="text-align:right"><div class="pcard-amount">P'+fmt(regFee)+'</div><span class="p-status-badge '+statusCls+'">'+statusTxt+'</span><div style="font-size:10px;color:#aaa;margin-top:2px">'+(regFee<=850?'Early Bird':'Regular')+'</div></div></div>';
+    html+='<div class="pcard-top"><div><div class="pcard-name">'+name+(isGroup?' <span style="font-size:11px;font-weight:700;color:#7c5b00;background:#fef3c7;padding:2px 8px;border-radius:100px;vertical-align:middle">👥 Group · '+(r.groupQty||0)+' slots</span>':'')+'</div><div class="pcard-batch">Batch '+(r.batch||'—')+' · '+(r.id||'')+'</div></div>';
+    html+='<div style="text-align:right"><div class="pcard-amount">P'+fmt(regFee)+'</div><span class="p-status-badge '+statusCls+'">'+statusTxt+'</span><div style="font-size:10px;color:#aaa;margin-top:2px">'+(isGroup?(r.groupQty||0)+' × P'+fmt(r.feePerPerson||0):(regFee<=850?'Early Bird':'Regular'))+'</div></div></div>';
     html+='<div class="pcard-meta"><span>'+(r.email||'—')+'</span><span class="pcard-meta-dot">·</span><span>'+(r.phone||'—')+'</span><span class="pcard-meta-dot">·</span><span>'+(dateStr||'—')+'</span></div>';
     html+='<div class="pcard-body">';
     if(hasReceipt){html+='<div class="pcard-thumb-wrap"><img id="ri-'+r.id+'" src="'+receiptSrc+'" alt="Receipt" onerror="receiptImgError(this)"></div>';}
     else{html+='<div class="pcard-no-thumb"><div class="pcard-no-thumb-txt">No receipt</div></div>';}
     html+='<div class="pcard-right"><div class="pcard-review-lbl">Review receipt then approve or reject:</div>';
     html+='<div class="pcard-actions">';
-    if(isPending){html+='<button class="btn-approve" data-rid="'+r.id+'" data-name="'+name.replace(/"/g,'&quot;')+'">Approve</button><button class="btn-reject" data-rid="'+r.id+'">Reject</button>';}
+    if(isPending){
+      if(isGroup){html+='<button class="btn-approve" data-rid="'+r.id+'" data-name="'+name.replace(/"/g,'&quot;')+'" data-group="1">Approve All '+(r.groupQty||0)+' Slots</button><button class="btn-reject" data-rid="'+r.id+'" data-group="1">Reject</button>';}
+      else{html+='<button class="btn-approve" data-rid="'+r.id+'" data-name="'+name.replace(/"/g,'&quot;')+'">Approve</button><button class="btn-reject" data-rid="'+r.id+'">Reject</button>';}
+    }
     else{html+='<div style="font-size:12px;color:#888;padding:4px 0">'+(r.status==='paid'?'Approved':'Rejected')+'</div>';}
     html+='</div>';
     if(hasReceipt){html+='<button class="btn-receipt" data-lbid="'+r.id+'">View Full Receipt</button>';}
@@ -1356,8 +1362,9 @@ function renderPayments(){
     while(t&&t!==pEl){
       var rid=t.getAttribute('data-rid');
       if(rid){
-        if(t.classList.contains('btn-approve')){approvePayment(rid,t.getAttribute('data-name')||'');return;}
-        if(t.classList.contains('btn-reject')) {rejectPayment(rid);return;}
+        var isGrp=t.getAttribute('data-group')==='1';
+        if(t.classList.contains('btn-approve')){if(isGrp){approveGroupPayment(rid,t.getAttribute('data-name')||'');}else{approvePayment(rid,t.getAttribute('data-name')||'');}return;}
+        if(t.classList.contains('btn-reject')) {if(isGrp){rejectGroupPayment(rid);}else{rejectPayment(rid);}return;}
       }
       var lbid=t.getAttribute('data-lbid');if(lbid){openLightbox(lbid);return;}
       var filt=t.getAttribute('data-filter');if(filt){setPayFilter(filt);return;
@@ -1397,6 +1404,46 @@ function rejectPayment(regId){
   var reason=prompt('Reason for rejection (optional):'); if(reason===null) reason='';
   db.collection('registrations').doc(regId).update({status:'rejected',rejectedAt:new Date().toISOString(),rejectionReason:reason})
     .then(function(){showToast('Registration rejected');}).catch(function(e){alert('Error: '+e.message);});
+}
+function approveGroupPayment(regId,name){
+  if(!db) return;
+  var reg=null;
+  for(var i=0;i<allRegistrations.length;i++){if(allRegistrations[i].id===regId){reg=allRegistrations[i];break;}}
+  if(!reg){alert('Group registration not found.');return;}
+  var qty=reg.groupQty||0;
+  var txnAmount=reg.totalFee||(qty*(reg.feePerPerson||0));
+  if(!confirm('Approve group payment for '+name+' — '+qty+' slots, P'+fmt(txnAmount)+' total?')) return;
+  var now=new Date().toISOString();
+  var fbatch=db.batch();
+  fbatch.update(db.collection('registrations').doc(regId),{status:'paid',approvedAt:now,approvedBy:'Fund Manager'});
+  (reg.groupSlots||[]).forEach(function(slotId){
+    fbatch.update(db.collection('registrations').doc(slotId),{status:'paid',approvedAt:now,approvedBy:'Fund Manager'});
+  });
+  fbatch.commit().then(function(){
+    var txn={id:uid(),created_at:new Date().toISOString(),txn_date:new Date().toISOString().split('T')[0],
+      type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',
+      contributor:name,ref_no:'SSA-REG-'+regId.slice(-6).toUpperCase(),
+      recorded_by:'Fund Manager (Auto)',description:'SSA Homecoming group registration - '+name+' ('+qty+' slots, P'+txnAmount+')'};
+    var aEntry={id:uid(),created_at:new Date().toISOString(),action:'add',
+      detail:'Auto-added P'+txnAmount+' Registration Fee — GCash — from '+name+' group of '+qty+' (SSA reg approved)',done_by:'Fund Manager'};
+    db.collection('fund_transactions').doc(txn.id).set(txn).then(function(){
+      return db.collection('fund_audit').doc(aEntry.id).set(aEntry);
+    }).catch(function(e){console.error('Save txn error:',e);});
+    showToast('Approved: '+name+' — '+qty+' slots — P'+txnAmount+' added to GCash ledger');
+  }).catch(function(e){alert('Error: '+e.message);});
+}
+function rejectGroupPayment(regId){
+  if(!db) return;
+  var reg=null;
+  for(var i=0;i<allRegistrations.length;i++){if(allRegistrations[i].id===regId){reg=allRegistrations[i];break;}}
+  var reason=prompt('Reason for rejection (optional):'); if(reason===null) reason='';
+  var now=new Date().toISOString();
+  var fbatch=db.batch();
+  fbatch.update(db.collection('registrations').doc(regId),{status:'rejected',rejectedAt:now,rejectionReason:reason});
+  if(reg){(reg.groupSlots||[]).forEach(function(slotId){
+    fbatch.update(db.collection('registrations').doc(slotId),{status:'rejected',rejectedAt:now,rejectionReason:reason});
+  });}
+  fbatch.commit().then(function(){showToast('Group registration rejected');}).catch(function(e){alert('Error: '+e.message);});
 }
 
 /* ── LIGHTBOX ── */
