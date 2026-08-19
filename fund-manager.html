@@ -729,6 +729,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
 </div>
 
+<!-- RECEIPT LIGHTBOX -->
+<div id="lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;padding:16px" onclick="closeLightbox()">
+  <div style="background:#fff;border-radius:14px;overflow:hidden;max-width:420px;width:100%" onclick="event.stopPropagation()">
+    <div style="background:#111;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+      <div><div style="color:#fff;font-size:13px;font-weight:700">Payment Receipt</div><div id="lb-name" style="color:rgba(255,255,255,.6);font-size:11px;margin-top:2px"></div></div>
+      <button onclick="closeLightbox()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <div style="background:#f5f5f5;padding:16px;text-align:center"><img id="lb-img" style="max-width:100%;max-height:60vh;border-radius:8px"/></div>
+    <div style="padding:12px 16px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:8px">
+      <button onclick="closeLightbox()" style="padding:8px 14px;background:none;border:1.5px solid #ddd;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;color:#444">Close</button>
+      <a id="lb-download" download="receipt.jpg" style="padding:8px 14px;background:#2563eb;color:#fff;border-radius:8px;font-size:13px;text-decoration:none;font-weight:600">⬇ Download</a>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ── CONFIG ── */
 var CFG = {
