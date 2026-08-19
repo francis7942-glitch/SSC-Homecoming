@@ -861,18 +861,35 @@ async function groupSubmit() {
 
 function renderGroupSlots() {
   const list = document.getElementById('group-slot-list');
-  const repName = (regData.firstName+' '+regData.lastName).trim();
-  const slots = groupSlots.map((id,i)=>({id, assignedName: i===0 ? repName : ''}));
-  renderSlotEditor(list, slots, 'g-assign-count');
-  document.getElementById('g-assign-count').textContent = (repName ? 1 : 0)+' assigned';
+  renderSlotEditor(list, groupSlotDocs, 'g-assign-count', {lockAssigned:true, ctx:'group'});
+  const assignedCt = groupSlotDocs.filter(s=>s.assignedName&&s.assignedName.trim()).length;
+  document.getElementById('g-assign-count').textContent = assignedCt+' assigned';
 }
 
 // ── SHARED SLOT EDITOR (used by post-submit screen, Manage Group page, and admin) ──
 // Each slot gets its own scannable QR (the slot ID is what Event Day check-in reads),
 // so a guest can screenshot theirs straight off this list once a name is assigned.
-function slotEditorHtml(slots, countElId) {
+// opts.lockAssigned: once a slot has a name, registrant-facing views (group/manage)
+// lock it read-only — only Admin (which never passes lockAssigned) can change it after that.
+function slotEditorHtml(slots, countElId, opts) {
+  opts = opts || {};
+  const ctx = opts.ctx || '';
   if(!slots || !slots.length) return '<div style="font-size:.78rem;color:var(--muted);padding:.5rem 0">No slots found.</div>';
-  return slots.map((s,i)=>`
+  return slots.map((s,i)=>{
+    const hasName = s.assignedName && s.assignedName.trim();
+    if(opts.lockAssigned && hasName){
+      return `
+    <div class="slot-item">
+      <div class="slot-num">${i+1}</div>
+      <div class="slot-qr" id="slot-qr-${s.id}" style="width:56px;height:56px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#fff"></div>
+      <div style="flex:1;min-width:0">
+        <div class="slot-id">${s.id}</div>
+        <div class="slot-name assigned">${s.assignedName}</div>
+      </div>
+      <span style="font-size:.6rem;color:var(--muted);text-align:right;flex-shrink:0;line-height:1.3">🔒 Locked<br/>Contact admin<br/>to change</span>
+    </div>`;
+    }
+    return `
     <div class="slot-item">
       <div class="slot-num">${i+1}</div>
       <div class="slot-qr" id="slot-qr-${s.id}" style="width:56px;height:56px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#fff"></div>
@@ -880,21 +897,24 @@ function slotEditorHtml(slots, countElId) {
         <div class="slot-id">${s.id}</div>
         <input class="slot-edit-in" id="slot-edit-${s.id}" value="${(s.assignedName||'').replace(/"/g,'&quot;')}" placeholder="Guest name"/>
       </div>
-      <button class="slot-assign-btn" onclick="saveSlotName('${s.id}',this,'${countElId||''}')">Save</button>
-    </div>`).join('');
+      <button class="slot-assign-btn" onclick="saveSlotName('${s.id}',this,'${countElId||''}','${ctx}')">Save</button>
+    </div>`;
+  }).join('');
 }
 
 // Renders the slot list into containerEl and draws each slot's QR code afterward
 // (QRCode.js needs the container elements to exist in the DOM first).
-function renderSlotEditor(containerEl, slots, countElId) {
-  containerEl.innerHTML = slotEditorHtml(slots, countElId);
+function renderSlotEditor(containerEl, slots, countElId, opts) {
+  containerEl.innerHTML = slotEditorHtml(slots, countElId, opts);
   (slots||[]).forEach(s=>{
     const qrEl = document.getElementById('slot-qr-'+s.id);
     if(qrEl) drawQR(qrEl, s.id, 56);
   });
 }
 
-async function saveSlotName(slotId, btn, countElId) {
+// ctx: '' (admin — always editable, incremental update) | 'group' (post-submit screen)
+// | 'manage' (Manage Group page) — the latter two lock the slot and re-render on success.
+async function saveSlotName(slotId, btn, countElId, ctx) {
   const inp = document.getElementById('slot-edit-'+slotId);
   if(!inp) return;
   const trimmed = inp.value.trim();
@@ -906,10 +926,14 @@ async function saveSlotName(slotId, btn, countElId) {
   try {
     await FS.updateReg(slotId, {assignedName:trimmed, firstName:fn, lastName:ln});
     // Keep local caches in sync so re-renders (search, filters) show the update
-    [manageSlots, (typeof adminRegs!=='undefined'?adminRegs:[])].forEach(arr=>{
+    [groupSlotDocs, manageSlots, (typeof adminRegs!=='undefined'?adminRegs:[])].forEach(arr=>{
       const s = arr && arr.find(x=>x.id===slotId);
       if(s){ s.assignedName=trimmed; s.firstName=fn; s.lastName=ln; }
     });
+    if(ctx==='group'){ renderGroupSlots(); return; }
+    if(ctx==='manage'){ renderManageSlots(); return; }
+    // admin (ctx='') stays editable — just confirm inline, no full re-render
+    // (a full admin re-render would collapse every open "Manage Slots" panel)
     btn.textContent='Saved ✓';
     setTimeout(()=>{ btn.textContent=orig; btn.disabled=false; },1200);
     if(countElId){
@@ -968,7 +992,7 @@ function renderManageResult() {
 }
 
 function renderManageSlots() {
-  renderSlotEditor(document.getElementById('manage-slot-list'), manageSlots, 'manage-assign-count');
+  renderSlotEditor(document.getElementById('manage-slot-list'), manageSlots, 'manage-assign-count', {lockAssigned:true, ctx:'manage'});
   const assigned = manageSlots.filter(s=>s.assignedName&&s.assignedName.trim()).length;
   document.getElementById('manage-assign-count').textContent = assigned+' assigned';
 }
@@ -1159,6 +1183,7 @@ function regReset() {
   ['g-fname','g-lname','g-batch','g-email','g-phone'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   receiptPreview=null;
   groupSlots=[];
+  groupSlotDocs=[];
   groupQty=10;
   document.getElementById('g-qty').value=10;
   document.getElementById('g-qty-display').textContent=10;

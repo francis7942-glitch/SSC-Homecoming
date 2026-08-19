@@ -289,7 +289,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .p-status-badge.paid     { background: #dcfce7; color: #15803d; }
 .p-status-badge.rejected { background: #fee2e2; color: #b91c1c; }
 .pcard-body { display: flex; gap: 12px; align-items: flex-start; }
-.pcard-thumb-wrap { flex-shrink: 0; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; background: #f5f5f5; position: relative; pointer-events: none; }
+.pcard-thumb-wrap { flex-shrink: 0; width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; background: #f5f5f5; position: relative; cursor: pointer; }
 .pcard-thumb-wrap img { width: 80px; height: 80px; object-fit: cover; display: block; }
 .pcard-receipt-label { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 9px; text-align: center; padding: 3px; }
 .pcard-receipt-err { font-size: 10px; color: #aaa; text-align: center; padding: 8px 4px; }
@@ -1343,7 +1343,7 @@ function renderPayments(){
     html+='<div style="text-align:right"><div class="pcard-amount">P'+fmt(regFee)+'</div><span class="p-status-badge '+statusCls+'">'+statusTxt+'</span><div style="font-size:10px;color:#aaa;margin-top:2px">'+(isGroup?(r.groupQty||0)+' × P'+fmt(r.feePerPerson||0):(regFee<=850?'Early Bird':'Regular'))+'</div></div></div>';
     html+='<div class="pcard-meta"><span>'+(r.email||'—')+'</span><span class="pcard-meta-dot">·</span><span>'+(r.phone||'—')+'</span><span class="pcard-meta-dot">·</span><span>'+(dateStr||'—')+'</span></div>';
     html+='<div class="pcard-body">';
-    if(hasReceipt){html+='<div class="pcard-thumb-wrap"><img id="ri-'+r.id+'" src="'+receiptSrc+'" alt="Receipt" onerror="receiptImgError(this)"></div>';}
+    if(hasReceipt){html+='<div class="pcard-thumb-wrap" data-lbid="'+r.id+'"><img id="ri-'+r.id+'" src="'+receiptSrc+'" alt="Receipt" onerror="receiptImgError(this)"></div>';}
     else{html+='<div class="pcard-no-thumb"><div class="pcard-no-thumb-txt">No receipt</div></div>';}
     html+='<div class="pcard-right"><div class="pcard-review-lbl">Review receipt then approve or reject:</div>';
     html+='<div class="pcard-actions">';
