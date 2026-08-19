@@ -1313,14 +1313,37 @@ function initEventDay() {
     document.getElementById('ci-count').textContent=checkedIn.length+' in';
     document.getElementById('ci-log').innerHTML=checkedIn.length===0
       ?'<p style="color:var(--muted);font-size:.83rem;text-align:center;padding:1rem">No check-ins yet.</p>'
-      :checkedIn.map(r=>`<div class="log-item"><div style="flex:1;min-width:0"><div class="log-nm">${r.firstName} ${r.lastName}</div><div class="log-dt">Batch ${r.batch} · ${r.checkedInAt?new Date(r.checkedInAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—'}</div></div><div style="display:flex;gap:3px">${r.voted?'<span class="badge b-vote">Voted</span>':''}<span class="badge b-in">✓</span></div></div>`).join('');
+      :checkedIn.map(r=>checkInLogRow(r)).join('');
     // Also update log tab
     const total=checkedIn.length, voted=checkedIn.filter(r=>r.voted).length;
     document.getElementById('log-badges').innerHTML=`<span class="badge b-in">${total} arrived</span><span class="badge b-vote">${voted} voted</span><span class="badge b-pend">${total-voted} not voted</span>`;
     document.getElementById('log-list').innerHTML=checkedIn.length===0
       ?'<p style="color:var(--muted);text-align:center;padding:1rem">No attendees yet.</p>'
-      :checkedIn.map(r=>`<div class="log-item"><div style="flex:1;min-width:0"><div class="log-nm">${r.firstName} ${r.lastName}</div><div class="log-dt">Batch ${r.batch} · ${r.checkedInAt?new Date(r.checkedInAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—'}</div></div>${r.voted?'<span class="badge b-vote">Voted</span>':'<span class="badge b-pend">Pending</span>'}</div>`).join('');
+      :checkedIn.map(r=>checkInLogRow(r)).join('');
   });
+}
+
+function checkInLogRow(r) {
+  const name=(r.firstName+' '+r.lastName).trim();
+  const time=r.checkedInAt?new Date(r.checkedInAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+  return `<div class="log-item">
+    <div style="flex:1;min-width:0"><div class="log-nm">${name}</div><div class="log-dt">Batch ${r.batch} · ${time}</div></div>
+    <div style="display:flex;gap:5px;align-items:center">
+      ${r.voted?'<span class="badge b-vote">Voted</span>':''}
+      <span class="badge b-in">✓</span>
+      <button data-id="${r.id}" data-name="${escAttr(name)}" data-voted="${r.voted?'1':''}" onclick="undoCheckIn(this.dataset.id,this.dataset.name,this.dataset.voted==='1')" style="font-size:.62rem;padding:3px 7px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--red);cursor:pointer;font-family:'Outfit',sans-serif">Undo</button>
+    </div>
+  </div>`;
+}
+
+async function undoCheckIn(id, name, voted) {
+  const note = voted ? ' Note: they already voted — this will NOT remove their vote.' : '';
+  if(!confirm('Undo check-in for '+name+'?'+note)) return;
+  try {
+    await FS.updateReg(id, {checkedIn:false, checkedInAt:null});
+  } catch(e) {
+    alert('Error: '+e.message);
+  }
 }
 
 // Voting
