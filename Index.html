@@ -913,7 +913,10 @@ function slotEditorHtml(slots, countElId, opts) {
         <div class="slot-id">${s.id}</div>
         <input class="slot-edit-in" id="slot-edit-${s.id}" value="${(s.assignedName||'').replace(/"/g,'&quot;')}" placeholder="Guest name"/>
       </div>
-      <button class="slot-assign-btn" onclick="saveSlotName('${s.id}',this,'${countElId||''}','${ctx}')">Save</button>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <button class="slot-assign-btn" onclick="saveSlotName('${s.id}',this,'${countElId||''}','${ctx}')">Save</button>
+        ${hasName?`<button class="slot-assign-btn" data-slot-id="${s.id}" data-slot-name="${escAttr(s.assignedName)}" data-batch="${escAttr(batch)}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">⬇ QR</button>`:''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -1637,7 +1640,7 @@ function renderAdminRegs() {
           <summary style="cursor:pointer;font-size:.78rem;font-weight:700;color:var(--navy)">🛠️ Manage Slots <span class="badge b-pend" id="${countElId}">${assignedCt} assigned</span></summary>
           <div class="slot-list" style="margin-top:.5rem">${slotEditorHtml(slots, countElId)}</div>
         </details>`;
-      })() : ''}
+      })() : `<div style="margin-top:.6rem"><button class="slot-assign-btn" data-slot-id="${r.id}" data-slot-name="${escAttr((r.firstName+' '+r.lastName).trim())}" data-batch="${escAttr(r.batch||'')}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">⬇ Download QR</button></div>`}
     </div>`).join('')}`;
   // Draw QR codes for any group slots just rendered (details panels can be collapsed —
   // QRCode.js still draws fine into an off-screen container)
