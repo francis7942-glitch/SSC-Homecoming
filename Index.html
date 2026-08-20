@@ -388,6 +388,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <div class="qr-frame"><div id="done-qr" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center"></div></div>
           <p style="font-size:.72rem;color:var(--muted);margin:.2rem 0 .6rem">📸 Screenshot this QR — present it at the entrance.</p>
           <div id="email-status"></div>
+          <div id="reg-check-link" style="margin-top:.7rem"></div>
           <div class="alert a-info" style="margin-top:1rem;text-align:left">ℹ️ <strong>Next:</strong> Our team will verify your GCash payment before the event.</div>
           <button class="btn btn-navy btn-full" onclick="regReset()" style="margin-top:.4rem">Register Another Guest</button>
         </div>
@@ -424,29 +425,13 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
     <div class="body">
       <div class="card" id="manage-lookup-card">
         <span class="card-head">Find Your Registration</span>
-        <div class="fg"><label>Registration ID</label><input id="m-gid" placeholder="e.g. SSC-A1B2-XYZ"/></div>
         <div class="fg"><label>Email Used to Register</label><input id="m-email" type="email" placeholder="maria@email.com"/></div>
         <div id="manage-err" class="alert a-err" style="display:none"></div>
         <button class="btn btn-navy btn-full" onclick="manageLookup()" id="manage-lookup-btn">Find My Registration</button>
       </div>
-      <div class="card" id="manage-result-card" style="display:none">
-        <span class="card-head" id="manage-result-title">Your Registration</span>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:.7rem" id="manage-result-sub"></div>
-        <div id="manage-status-alert"></div>
-        <!-- Individual registration: single QR -->
-        <div id="manage-single-section" style="display:none;text-align:center;padding:.8rem 0 .2rem">
-          <div id="manage-single-qr" style="width:180px;height:180px;margin:0 auto .8rem;display:flex;align-items:center;justify-content:center"></div>
-          <button class="btn btn-navy btn-full" id="manage-single-download-btn">⬇ Download QR</button>
-        </div>
-        <!-- Group registration: editable slot list -->
-        <div id="manage-group-section" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin:.8rem 0 .6rem">
-            <span style="font-weight:700;color:var(--navy);font-size:.86rem">Guest Slots</span>
-            <span class="badge b-pend" id="manage-assign-count">0 assigned</span>
-          </div>
-          <div class="slot-list" id="manage-slot-list"></div>
-        </div>
-        <button class="btn btn-ghost btn-full" style="margin-top:1rem" onclick="manageReset()">Search Another Registration</button>
+      <div id="manage-results" style="display:none">
+        <div id="manage-results-list"></div>
+        <button class="btn btn-ghost btn-full" style="margin-top:.4rem" onclick="manageReset()">Search Another Email</button>
       </div>
     </div>
   </div>
@@ -649,6 +634,11 @@ const FS = {
     const s = await db.collection('registrations').doc(id).get();
     return s.exists ? {id:s.id,...s.data()} : null;
   },
+  queryByEmail: async emailLower => {
+    if(!db) return [];
+    const snap = await db.collection('registrations').where('emailLower','==',emailLower).get();
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  },
   onRegs: cb => db ? db.collection('registrations').onSnapshot(
     snap => {
       // Sort client-side — no Firestore index required
@@ -794,6 +784,7 @@ async function groupSubmit() {
     lastName:  regData.lastName,
     batch:     batch,
     email:     regData.email,
+    emailLower:(regData.email||'').trim().toLowerCase(),
     phone:     regData.phone,
     status:    'pending',
     groupQty:  qty,
@@ -851,9 +842,9 @@ async function groupSubmit() {
   renderGroupSlots();
 
   // Manage-later link
-  const manageUrl = location.origin + location.pathname + '?manage=' + encodeURIComponent(repId);
+  const manageUrl = location.origin + location.pathname + '?check=' + encodeURIComponent(regData.email);
   const mlEl = document.getElementById('group-manage-link');
-  if(mlEl) mlEl.innerHTML = '<div class="alert a-info" style="text-align:left">🔗 <strong>Save this link</strong> to assign or edit guest names later:<br/><a href="'+manageUrl+'" style="word-break:break-all;color:var(--navy);font-weight:700">'+manageUrl+'</a></div>';
+  if(mlEl) mlEl.innerHTML = '<div class="alert a-info" style="text-align:left">🔗 <strong>Save this link</strong> to check status or assign guest names later:<br/><a href="'+manageUrl+'" style="word-break:break-all;color:var(--navy);font-weight:700">'+manageUrl+'</a></div>';
 
   // Email
   const ges = document.getElementById('group-email-status');
@@ -945,12 +936,12 @@ async function saveSlotName(slotId, btn, countElId, ctx) {
   try {
     await FS.updateReg(slotId, {assignedName:trimmed, firstName:fn, lastName:ln});
     // Keep local caches in sync so re-renders (search, filters) show the update
-    [groupSlotDocs, manageSlots, (typeof adminRegs!=='undefined'?adminRegs:[])].forEach(arr=>{
+    [groupSlotDocs, ...manageRegs.map(e=>e.slots), (typeof adminRegs!=='undefined'?adminRegs:[])].forEach(arr=>{
       const s = arr && arr.find(x=>x.id===slotId);
       if(s){ s.assignedName=trimmed; s.firstName=fn; s.lastName=ln; }
     });
     if(ctx==='group'){ renderGroupSlots(); return; }
-    if(ctx==='manage'){ renderManageSlots(); return; }
+    if(ctx.indexOf('manage:')===0){ renderManageSlotsFor(ctx.slice(7)); return; }
     // admin (ctx='') stays editable — just confirm inline, no full re-render
     // (a full admin re-render would collapse every open "Manage Slots" panel)
     btn.textContent='Saved ✓';
@@ -967,32 +958,35 @@ async function saveSlotName(slotId, btn, countElId, ctx) {
   }
 }
 
-// ── CHECK REGISTRATION (registrant self-service lookup — individual or group) ──
-let manageReg = null, manageSlots = [];
+// ── CHECK REGISTRATION (registrant self-service lookup by email — individual or group,
+// one email can have multiple registrations, each rendered as its own card) ──
+let manageRegs = []; // [{reg, slots}]
 
 async function manageLookup() {
-  const gid = document.getElementById('m-gid').value.trim().toUpperCase();
   const email = document.getElementById('m-email').value.trim().toLowerCase();
   const errEl = document.getElementById('manage-err');
   const btn = document.getElementById('manage-lookup-btn');
   errEl.style.display = 'none';
-  if(!gid || !email){ errEl.textContent='Please enter both your Registration ID and email.'; errEl.style.display='block'; return; }
+  if(!email){ errEl.textContent='Please enter your email.'; errEl.style.display='block'; return; }
   btn.textContent='Searching…'; btn.disabled=true;
   try {
-    const reg = await FS.getReg(gid);
-    if(!reg || reg.type === 'group_slot' || (reg.email||'').trim().toLowerCase() !== email) {
-      errEl.textContent = "Registration not found, or email doesn't match our records.";
+    const found = await FS.queryByEmail(email);
+    const topLevel = found.filter(r => r.type !== 'group_slot');
+    if(!topLevel.length) {
+      errEl.textContent = "No registration found for that email.";
       errEl.style.display = 'block';
       return;
     }
-    manageReg = reg;
-    if(reg.type === 'group') {
-      const slots = await Promise.all((reg.groupSlots||[]).map(id => FS.getReg(id)));
-      manageSlots = slots.filter(Boolean);
-    } else {
-      manageSlots = [];
+    manageRegs = [];
+    for(const reg of topLevel) {
+      let slots = [];
+      if(reg.type === 'group') {
+        const s = await Promise.all((reg.groupSlots||[]).map(id => FS.getReg(id)));
+        slots = s.filter(Boolean);
+      }
+      manageRegs.push({reg, slots});
     }
-    renderManageResult();
+    renderManageResults();
   } catch(e) {
     errEl.textContent = 'Error: '+e.message; errEl.style.display='block';
   } finally {
@@ -1000,46 +994,66 @@ async function manageLookup() {
   }
 }
 
-function renderManageResult() {
-  const reg = manageReg;
+function manageResultCardHtml(reg, slots) {
   const isGroup = reg.type === 'group';
   const name = (reg.firstName+' '+reg.lastName).trim()||'Your';
-  document.getElementById('manage-lookup-card').style.display='none';
-  document.getElementById('manage-result-card').style.display='block';
-  document.getElementById('manage-result-title').textContent = name+(isGroup?"'s Group":"'s Registration");
-  document.getElementById('manage-result-sub').textContent = isGroup
-    ? 'Batch '+(reg.batch||'—')+' · '+(reg.groupQty||manageSlots.length)+' slots · ₱'+(reg.totalFee||0).toLocaleString()
+  const title = name+(isGroup?"'s Group":"'s Registration");
+  const sub = isGroup
+    ? 'Batch '+(reg.batch||'—')+' · '+(reg.groupQty||slots.length)+' slots · ₱'+(reg.totalFee||0).toLocaleString()
     : 'Batch '+(reg.batch||'—');
-  document.getElementById('manage-status-alert').innerHTML = reg.status==='paid'
+  const statusHtml = reg.status==='paid'
     ? '<div class="alert a-ok">✅ Payment confirmed — '+(isGroup?'your slots are active.':'you\'re confirmed for the event.')+'</div>'
     : reg.status==='rejected'
     ? '<div class="alert a-err">✗ Payment was rejected. Please contact the organizers.</div>'
     : '<div class="alert a-info">⏳ Awaiting payment confirmation'+(isGroup?'. You can still assign guest names now.':'.')+'</div>';
-
-  document.getElementById('manage-group-section').style.display = isGroup ? 'block' : 'none';
-  document.getElementById('manage-single-section').style.display = isGroup ? 'none' : 'block';
-  if(isGroup) {
-    renderManageSlots();
-  } else {
-    const qrEl = document.getElementById('manage-single-qr');
-    drawQR(qrEl, reg.id, 180);
-    const btn = document.getElementById('manage-single-download-btn');
-    btn.onclick = () => downloadSlotTicket(reg.id, name, reg.batch||'');
-  }
+  const assignedCt = slots.filter(s=>s.assignedName&&s.assignedName.trim()).length;
+  return `<div class="card" style="margin-bottom:.8rem">
+    <span class="card-head">${title}</span>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:.7rem">${sub}</div>
+    ${statusHtml}
+    ${isGroup ? `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:.8rem 0 .6rem">
+      <span style="font-weight:700;color:var(--navy);font-size:.86rem">Guest Slots</span>
+      <span class="badge b-pend" id="manage-assign-count-${reg.id}">${assignedCt} assigned</span>
+    </div>
+    <div class="slot-list" id="manage-slot-list-${reg.id}"></div>
+    ` : `
+    <div style="text-align:center;padding:.8rem 0 .2rem">
+      <div id="manage-single-qr-${reg.id}" style="width:180px;height:180px;margin:0 auto .8rem;display:flex;align-items:center;justify-content:center"></div>
+      <button class="btn btn-navy btn-full" id="manage-single-download-btn-${reg.id}">⬇ Download QR</button>
+    </div>
+    `}
+  </div>`;
 }
 
-function renderManageSlots() {
-  renderSlotEditor(document.getElementById('manage-slot-list'), manageSlots, 'manage-assign-count', {lockAssigned:true, ctx:'manage', batch:(manageReg&&manageReg.batch)||''});
-  const assigned = manageSlots.filter(s=>s.assignedName&&s.assignedName.trim()).length;
-  document.getElementById('manage-assign-count').textContent = assigned+' assigned';
+function renderManageResults() {
+  document.getElementById('manage-lookup-card').style.display='none';
+  document.getElementById('manage-results').style.display='block';
+  document.getElementById('manage-results-list').innerHTML = manageRegs.map(e=>manageResultCardHtml(e.reg, e.slots)).join('');
+  manageRegs.forEach(({reg, slots})=>{
+    if(reg.type === 'group') {
+      renderManageSlotsFor(reg.id);
+    } else {
+      const name = (reg.firstName+' '+reg.lastName).trim();
+      drawQR(document.getElementById('manage-single-qr-'+reg.id), reg.id, 180);
+      document.getElementById('manage-single-download-btn-'+reg.id).onclick = () => downloadSlotTicket(reg.id, name, reg.batch||'');
+    }
+  });
+}
+
+function renderManageSlotsFor(regId) {
+  const entry = manageRegs.find(e => e.reg.id === regId);
+  if(!entry) return;
+  renderSlotEditor(document.getElementById('manage-slot-list-'+regId), entry.slots, 'manage-assign-count-'+regId, {lockAssigned:true, ctx:'manage:'+regId, batch:entry.reg.batch||''});
+  const assigned = entry.slots.filter(s=>s.assignedName&&s.assignedName.trim()).length;
+  document.getElementById('manage-assign-count-'+regId).textContent = assigned+' assigned';
 }
 
 function manageReset() {
-  manageReg=null; manageSlots=[];
-  document.getElementById('m-gid').value='';
+  manageRegs=[];
   document.getElementById('m-email').value='';
   document.getElementById('manage-err').style.display='none';
-  document.getElementById('manage-result-card').style.display='none';
+  document.getElementById('manage-results').style.display='none';
   document.getElementById('manage-lookup-card').style.display='block';
 }
 
@@ -1076,7 +1090,16 @@ function getQRDataUrl(container) {
 // Composites a QR + guest name + slot code into one PNG the guest can save to
 // their phone — since group slots aren't emailed individually, this is the
 // portable "ticket" they keep for Event Day check-in.
-function downloadSlotTicket(slotId, name, batch) {
+function dataUrlToBlob(dataUrl) {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/:(.*?);/)||[])[1] || 'image/png';
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  return new Blob([arr], {type:mime});
+}
+
+async function downloadSlotTicket(slotId, name, batch) {
   const tmp = document.createElement('div');
   tmp.style.position='fixed'; tmp.style.left='-9999px'; tmp.style.top='0';
   document.body.appendChild(tmp);
@@ -1105,10 +1128,34 @@ function downloadSlotTicket(slotId, name, batch) {
 
   document.body.removeChild(tmp);
 
-  const a=document.createElement('a');
-  a.href=out.toDataURL('image/png');
-  a.download=(displayName.replace(/[^a-z0-9]+/gi,'_')||'guest')+'_'+slotId+'.png';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  const dataUrl = out.toDataURL('image/png');
+  const filename = (displayName.replace(/[^a-z0-9]+/gi,'_')||'guest')+'_'+slotId+'.png';
+
+  // Prefer the native share sheet — it offers "Save Image"/"Add to Photos" directly
+  // and actually works on mobile, unlike the <a download> link below: iOS Safari (and
+  // some Android browsers) silently ignore the download attribute on data: URIs.
+  if(navigator.canShare && navigator.share){
+    try {
+      const file = new File([dataUrlToBlob(dataUrl)], filename, {type:'image/png'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file]});
+        return;
+      }
+    } catch(e) {
+      if(e && e.name === 'AbortError') return; // user cancelled the share sheet
+      // otherwise fall through to the manual fallback below
+    }
+  }
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if(isMobile){
+    // No file-sharing support — open the image so the user can long-press → Save Image.
+    window.open(dataUrl, '_blank');
+  } else {
+    const a=document.createElement('a');
+    a.href=dataUrl; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
 }
 
 // ── EMAIL ─────────────────────────────────────────────────────────────
@@ -1144,13 +1191,12 @@ function initFeePreview() {
 // Initialize on load
 window.addEventListener('load', initFeePreview);
 window.addEventListener('load', () => {
-  const gid = new URLSearchParams(location.search).get('manage');
-  if(!gid) return;
+  const checkEmail = new URLSearchParams(location.search).get('check');
+  if(!checkEmail) return;
   showPage('manage');
-  const gidEl = document.getElementById('m-gid');
-  if(gidEl) gidEl.value = gid;
   const emailEl = document.getElementById('m-email');
-  if(emailEl) emailEl.focus();
+  if(emailEl) emailEl.value = checkEmail;
+  manageLookup();
 });
 
 function showPage(name) {
@@ -1232,7 +1278,7 @@ async function regSubmit() {
   if(!receiptPreview){alert('Please upload your GCash receipt screenshot.');return;}
   const btn=document.getElementById('reg-submit-btn');
   btn.textContent='Saving…';btn.disabled=true;
-  const reg={id:genId(),...regData,status:'pending',checkedIn:false,voted:false,createdAt:new Date().toISOString(),receiptImg:receiptPreview};
+  const reg={id:genId(),...regData,emailLower:(regData.email||'').trim().toLowerCase(),status:'pending',checkedIn:false,voted:false,createdAt:new Date().toISOString(),receiptImg:receiptPreview};
   await FS.addReg(reg);
   // Show done step
   document.getElementById('reg-step2').style.display='none';
@@ -1241,6 +1287,9 @@ async function regSubmit() {
   document.getElementById('done-id').textContent=reg.id;
   const qr=document.getElementById('done-qr');
   drawQR(qr, reg.id);
+  const checkUrl = location.origin + location.pathname + '?check=' + encodeURIComponent(reg.email);
+  const clEl = document.getElementById('reg-check-link');
+  if(clEl) clEl.innerHTML = '<div class="alert a-info" style="text-align:left">🔗 <strong>Save this link</strong> to check your status or re-download your QR later:<br/><a href="'+checkUrl+'" style="word-break:break-all;color:var(--navy);font-weight:700">'+checkUrl+'</a></div>';
   btn.textContent='Submit Registration ✓';btn.disabled=false;
   // Wait a tick for QRCode.js to finish rendering before grabbing data URL
   await new Promise(r=>setTimeout(r,200));
@@ -1606,7 +1655,7 @@ function renderAdminRegs() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.4rem;margin-bottom:.65rem">
         <div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:700;color:var(--navy)">${r.firstName} ${r.lastName}${r.type==='group'?' <span style="font-size:.7rem;background:var(--navy);color:var(--gold);padding:2px 7px;border-radius:100px;font-family:Outfit,sans-serif;vertical-align:middle">👥 Group</span>':''}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${r.type==='group'?`<strong style="color:var(--navy)">${r.groupQty} slots · ₱${(r.totalFee||0).toLocaleString()}</strong> · Batch ${r.batch}`:`Batch ${r.batch} · <code style="font-size:.69rem">${r.id}</code>`}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${r.type==='group'?`<strong style="color:var(--navy)">${r.groupQty} slots · ₱${(r.totalFee||0).toLocaleString()}</strong> · Batch ${r.batch} · <code style="font-size:.69rem">${r.id}</code>`:`Batch ${r.batch} · <code style="font-size:.69rem">${r.id}</code>`}</div>
         </div>
         <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center">
           <span class="badge ${r.status==='paid'?'b-paid':r.status==='rejected'?'b-rej':'b-pend'}">${r.status==='paid'?'✓ Paid':r.status==='rejected'?'✗ Rejected':'⏳ Pending'}</span>
