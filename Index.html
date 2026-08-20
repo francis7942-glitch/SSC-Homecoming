@@ -1140,11 +1140,14 @@ async function downloadSlotTicket(slotId, name, batch) {
 
   const dataUrl = out.toDataURL('image/png');
   const filename = (displayName.replace(/[^a-z0-9]+/gi,'_')||'guest')+'_'+slotId+'.png';
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // Prefer the native share sheet — it offers "Save Image"/"Add to Photos" directly
-  // and actually works on mobile, unlike the <a download> link below: iOS Safari (and
-  // some Android browsers) silently ignore the download attribute on data: URIs.
-  if(navigator.canShare && navigator.share){
+  // Mobile only: prefer the native share sheet ("Save Image"/"Add to Photos") since
+  // iOS Safari (and some Android browsers) silently ignore the download attribute on
+  // data: URIs. Desktop browsers (incl. Windows Chrome/Edge, which also expose
+  // navigator.share for its own Share panel) skip straight to a direct download below —
+  // popping a share dialog there just gets in the way of saving the file normally.
+  if(isMobile && navigator.canShare && navigator.share){
     try {
       const file = new File([dataUrlToBlob(dataUrl)], filename, {type:'image/png'});
       if(navigator.canShare({files:[file]})){
@@ -1157,7 +1160,6 @@ async function downloadSlotTicket(slotId, name, batch) {
     }
   }
 
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   if(isMobile){
     // No file-sharing support — open the image so the user can long-press → Save Image.
     window.open(dataUrl, '_blank');
