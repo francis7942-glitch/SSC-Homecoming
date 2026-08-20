@@ -235,6 +235,9 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
 .slot-name{font-size:.72rem;color:var(--muted)}
 .slot-name.assigned{color:var(--green);font-weight:600}
 .slot-assign-btn{margin-left:auto;font-size:.68rem;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'Outfit',sans-serif;text-decoration:underline;flex-shrink:0}
+.qr-dl-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:.66rem;font-weight:700;color:var(--navy);background:var(--gold);border:none;border-radius:7px;padding:6px 10px;cursor:pointer;font-family:'Outfit',sans-serif;flex-shrink:0;white-space:nowrap}
+.qr-dl-btn:active{opacity:.85}
+.qr-dl-btn.wide{width:100%;padding:11px;font-size:.85rem;border-radius:9px}
 .slot-edit-in{width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:.78rem;font-family:'Outfit',sans-serif;margin-top:2px;box-sizing:border-box}
 .slot-edit-in:focus{outline:none;border-color:var(--gold)}
 .group-done-header{text-align:center;padding:.5rem 0 .9rem}
@@ -875,6 +878,8 @@ function escAttr(s) {
   return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+const DL_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+
 function slotEditorHtml(slots, countElId, opts) {
   opts = opts || {};
   const ctx = opts.ctx || '';
@@ -892,25 +897,42 @@ function slotEditorHtml(slots, countElId, opts) {
         <div class="slot-name assigned">${s.assignedName}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-        <button class="slot-assign-btn" data-slot-id="${s.id}" data-slot-name="${escAttr(s.assignedName)}" data-batch="${escAttr(batch)}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">⬇ Download QR</button>
+        <button class="qr-dl-btn" data-slot-id="${s.id}" data-slot-name="${escAttr(s.assignedName)}" data-batch="${escAttr(batch)}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">${DL_ICON}Download QR</button>
         <span style="font-size:.58rem;color:var(--muted);text-align:right;line-height:1.25">🔒 Locked</span>
       </div>
     </div>`;
     }
+    // Not locked (admin, or a not-yet-assigned registrant-facing slot): if a name is
+    // already saved, show it read-only with an "Edit" button rather than a live input —
+    // clicking Edit swaps it to an input + "Save", which swaps back to view mode on save.
     return `
-    <div class="slot-item">
+    <div class="slot-item" id="slot-row-${s.id}">
       <div class="slot-num">${i+1}</div>
       <div class="slot-qr" id="slot-qr-${s.id}" style="width:56px;height:56px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#fff"></div>
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:0" id="slot-name-wrap-${s.id}">
         <div class="slot-id">${s.id}</div>
-        <input class="slot-edit-in" id="slot-edit-${s.id}" value="${(s.assignedName||'').replace(/"/g,'&quot;')}" placeholder="Guest name"/>
+        ${hasName
+          ? `<div class="slot-name assigned" id="slot-display-${s.id}">${s.assignedName}</div>`
+          : `<input class="slot-edit-in" id="slot-edit-${s.id}" placeholder="Guest name"/>`
+        }
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-        <button class="slot-assign-btn" onclick="saveSlotName('${s.id}',this,'${countElId||''}','${ctx}')">Save</button>
-        ${hasName?`<button class="slot-assign-btn" data-slot-id="${s.id}" data-slot-name="${escAttr(s.assignedName)}" data-batch="${escAttr(batch)}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">⬇ QR</button>`:''}
+        <button class="slot-assign-btn" id="slot-edit-btn-${s.id}" onclick="${hasName?`toggleSlotEdit('${s.id}',this,'${countElId||''}','${ctx}')`:`saveSlotName('${s.id}',this,'${countElId||''}','${ctx}')`}">${hasName?'Edit':'Save'}</button>
+        ${hasName?`<button class="qr-dl-btn" data-slot-id="${s.id}" data-slot-name="${escAttr(s.assignedName)}" data-batch="${escAttr(batch)}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">${DL_ICON}QR</button>`:''}
       </div>
     </div>`;
   }).join('');
+}
+
+function toggleSlotEdit(slotId, btn, countElId, ctx) {
+  const wrap = document.getElementById('slot-name-wrap-'+slotId);
+  const disp = document.getElementById('slot-display-'+slotId);
+  const currentName = disp ? disp.textContent : '';
+  if(wrap) wrap.innerHTML = `<div class="slot-id">${slotId}</div><input class="slot-edit-in" id="slot-edit-${slotId}" value="${escAttr(currentName)}" placeholder="Guest name"/>`;
+  btn.textContent = 'Save';
+  btn.onclick = () => saveSlotName(slotId, btn, countElId, ctx);
+  const inp = document.getElementById('slot-edit-'+slotId);
+  if(inp){ inp.focus(); inp.select(); }
 }
 
 // Renders the slot list into containerEl and draws each slot's QR code afterward
@@ -943,13 +965,23 @@ async function saveSlotName(slotId, btn, countElId, ctx) {
     });
     if(ctx==='group'){ renderGroupSlots(); return; }
     if(ctx.indexOf('manage:')===0){ renderManageSlotsFor(ctx.slice(7)); return; }
-    // admin (ctx='') stays editable — just confirm inline, no full re-render
-    // (a full admin re-render would collapse every open "Manage Slots" panel)
-    btn.textContent='Saved ✓';
-    setTimeout(()=>{ btn.textContent=orig; btn.disabled=false; },1200);
+    // admin (ctx=''): swap this one row between view (name + Edit) and edit (input + Save)
+    // depending on whether it now has a name, instead of a full panel re-render (which
+    // would collapse every open "Manage Slots" details panel).
+    const wrap = document.getElementById('slot-name-wrap-'+slotId);
+    if(wrap){
+      wrap.innerHTML = trimmed
+        ? `<div class="slot-id">${slotId}</div><div class="slot-name assigned" id="slot-display-${slotId}">${trimmed}</div>`
+        : `<div class="slot-id">${slotId}</div><input class="slot-edit-in" id="slot-edit-${slotId}" placeholder="Guest name"/>`;
+    }
+    btn.disabled = false;
+    btn.textContent = trimmed ? 'Edit' : 'Save';
+    btn.onclick = trimmed
+      ? () => toggleSlotEdit(slotId, btn, countElId, ctx)
+      : () => saveSlotName(slotId, btn, countElId, ctx);
     if(countElId){
       const listEl = btn.closest('.slot-list');
-      const assigned = listEl ? [...listEl.querySelectorAll('.slot-edit-in')].filter(i=>i.value.trim()).length : 0;
+      const assigned = listEl ? ([...listEl.querySelectorAll('.slot-edit-in')].filter(i=>i.value.trim()).length + listEl.querySelectorAll('.slot-name.assigned').length) : 0;
       const badge = document.getElementById(countElId);
       if(badge) badge.textContent = assigned+' assigned';
     }
@@ -1021,7 +1053,7 @@ function manageResultCardHtml(reg, slots) {
     ` : `
     <div style="text-align:center;padding:.8rem 0 .2rem">
       <div id="manage-single-qr-${reg.id}" style="width:180px;height:180px;margin:0 auto .8rem;display:flex;align-items:center;justify-content:center"></div>
-      <button class="btn btn-navy btn-full" id="manage-single-download-btn-${reg.id}">⬇ Download QR</button>
+      <button class="btn btn-navy btn-full" id="manage-single-download-btn-${reg.id}" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">${DL_ICON}Download QR</button>
     </div>
     `}
   </div>`;
@@ -1701,7 +1733,7 @@ function renderAdminRegs() {
           <summary style="cursor:pointer;font-size:.78rem;font-weight:700;color:var(--navy)">🛠️ Manage Slots <span class="badge b-pend" id="${countElId}">${assignedCt} assigned</span></summary>
           <div class="slot-list" style="margin-top:.5rem">${slotEditorHtml(slots, countElId)}</div>
         </details>`;
-      })() : `<div style="margin-top:.6rem"><button class="slot-assign-btn" data-slot-id="${r.id}" data-slot-name="${escAttr((r.firstName+' '+r.lastName).trim())}" data-batch="${escAttr(r.batch||'')}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">⬇ Download QR</button></div>`}
+      })() : `<div style="margin-top:.6rem"><button class="qr-dl-btn" data-slot-id="${r.id}" data-slot-name="${escAttr((r.firstName+' '+r.lastName).trim())}" data-batch="${escAttr(r.batch||'')}" onclick="downloadSlotTicket(this.dataset.slotId,this.dataset.slotName,this.dataset.batch)">${DL_ICON}Download QR</button></div>`}
     </div>`).join('')}`;
   // Draw QR codes for any group slots just rendered (details panels can be collapsed —
   // QRCode.js still draws fine into an off-screen container)
