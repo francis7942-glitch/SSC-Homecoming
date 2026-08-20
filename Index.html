@@ -844,7 +844,8 @@ async function groupSubmit() {
   // Manage-later link
   const manageUrl = location.origin + location.pathname + '?check=' + encodeURIComponent(regData.email);
   const mlEl = document.getElementById('group-manage-link');
-  if(mlEl) mlEl.innerHTML = '<div class="alert a-info" style="text-align:left">🔗 <strong>Save this link</strong> to check status or assign guest names later:<br/><a href="'+manageUrl+'" style="word-break:break-all;color:var(--navy);font-weight:700">'+manageUrl+'</a></div>';
+  if(mlEl) mlEl.innerHTML = '<button class="btn btn-navy btn-full" data-email="'+escAttr(regData.email)+'" onclick="goToCheckRegistration(this.dataset.email)">➕ Add Guest Names Now</button>'
+    +'<div class="alert a-info" style="text-align:left;margin-top:.6rem">🔗 Already know some names? Add them above, or <strong>save this link</strong> to come back anytime:<br/><a href="'+manageUrl+'" style="word-break:break-all;color:var(--navy);font-weight:700">'+manageUrl+'</a></div>';
 
   // Email
   const ges = document.getElementById('group-email-status');
@@ -1055,6 +1056,15 @@ function manageReset() {
   document.getElementById('manage-err').style.display='none';
   document.getElementById('manage-results').style.display='none';
   document.getElementById('manage-lookup-card').style.display='block';
+}
+
+// Jumps straight to Check Registration, pre-filled and auto-searched with the
+// given email — used by "Add Guest Names Now" right after a group submits.
+function goToCheckRegistration(email) {
+  showPage('manage');
+  const emailEl = document.getElementById('m-email');
+  if(emailEl) emailEl.value = email;
+  manageLookup();
 }
 
 // ── QR CODE (canvas-based) ───────────────────────────────────────────
