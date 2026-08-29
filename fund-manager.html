@@ -760,8 +760,8 @@ var CFG = {
     { name:'Tina',  pin:'2002', role:'auditor'   },
     { name:'Angeli',  pin:'0529', role:'Asst Treasurer'   },
   ],
-  incCats: ['Donations','Sponsorships','Ticket Sales','Fundraising Activity','Registration Fee','Other Income'],
-  expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Miscellaneous Expense'],
+  incCats: ['Donations','Sponsorships','Entrance Ticket Sales','Fundraising Activity','Registration Fee','Other Income','Pledge'],
+  expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Return/Refund','Miscellaneous Expense'],
   projects: ['Legacy Run','Raffle','Movie','Merchandise Sales'],
   projectTargets: {},
 };
@@ -801,7 +801,10 @@ function el(id)   { return document.getElementById(id); }
 function qs(id)   { var e=el(id); return e?e.value||'':''; }
 
 function fillCats(type) {
-  el('f-cat').innerHTML = (type==='income'?CFG.incCats:CFG.expCats).map(function(c){ return '<option>'+c+'</option>'; }).join('');
+  var sel=el('f-cat'); if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML = (type==='income'?CFG.incCats:CFG.expCats).map(function(c){ return '<option>'+c+'</option>'; }).join('');
+  if(cur && (type==='income'?CFG.incCats:CFG.expCats).indexOf(cur)!==-1) sel.value=cur;
   updateAddProjectField();
 }
 function fillCatFilter() {
@@ -1871,6 +1874,10 @@ function listenSettings() {
       if(data.expCats&&data.expCats.length) CFG.expCats=data.expCats;
       if(data.projects) CFG.projects=data.projects;
       if(data.projectTargets) CFG.projectTargets=data.projectTargets;
+      // The Record Transaction category dropdown is populated once from CFG and never
+      // refreshed on its own — without this, it stays stuck on whatever list was loaded
+      // first (often the older hardcoded default) even after Settings saves a new one.
+      if(txnType==='income'||txnType==='expense') fillCats(txnType);
     }
     renderSettings();
   },function(){renderSettings();});
