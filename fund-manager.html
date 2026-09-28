@@ -396,6 +396,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .drill-meta { font-size:10px; color:#aaa; margin-top:2px; }
 .drill-amt  { font-size:13px; font-weight:700; font-family:monospace; white-space:nowrap; flex-shrink:0; }
 .proj-pill  { font-size:10px; padding:3px 8px; border-radius:20px; background:#fef3c7; color:#92400e; font-weight:600; white-space:nowrap; }
+.adj-pill   { font-size:10px; padding:3px 8px; border-radius:20px; background:#ede9fe; color:#6d28d9; font-weight:700; white-space:nowrap; }
+.adj-card   { background:#faf9ff; border:1px solid #e9d5ff; border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+.adj-leg    { display:flex; justify-content:space-between; align-items:center; padding:4px 0; font-size:13px; }
+.adj-leg .amt { font-family:monospace; font-weight:700; }
 .drill-proj-hdr { display:flex; align-items:center; gap:8px; padding:9px 0; cursor:pointer; border-bottom:1px solid #eee; -webkit-user-select:none; user-select:none; }
 .drill-proj-hdr:active { background:#fffbeb; margin:0 -16px; padding:9px 16px; }
 .drill-proj-body { padding-left:12px; border-left:3px solid #fef3c7; margin-left:4px; }
@@ -450,6 +454,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <div class="wrap">
     <div class="sec-tabs" id="sec-tabs-row">
       <button class="sec-tab" id="tab-add"          onclick="goTab('add')">+ Add</button>
+      <button class="sec-tab"        id="tab-adjusting"     onclick="goTab('adjusting')">⚖️ Adjusting Entry</button>
       <button class="sec-tab active" id="tab-ledger" onclick="goTab('ledger')">📋 Ledger</button>
       <button class="sec-tab"        id="tab-contributors"  onclick="goTab('contributors')">👥 Contributors</button>
       <button class="sec-tab"        id="tab-accounts"      onclick="goTab('accounts')">🏦 Accounts</button>
@@ -497,6 +502,51 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         </div>
         <button class="btn-primary" onclick="addTxn()">Save Transaction</button>
         <div class="ok-msg" id="ok-msg">✅ Transaction saved!</div>
+      </div>
+    </div>
+
+    <!-- ADJUSTING ENTRY -->
+    <div id="sec-adjusting" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Adjusting Entry</div>
+        <p style="font-size:12px;color:#888;margin:-6px 0 14px">
+          For income and expenses that offset each other with no actual cash movement through our accounts —
+          e.g. a project's organizers collected registrations on our behalf, and we owed them for expenses
+          they already covered, so the two were netted instead of physically exchanging money. This records
+          both sides for accurate Income/Expense and category totals, without touching any account balance.
+        </p>
+        <div class="form-grid">
+          <div class="field"><label>Date</label><input type="date" id="adj-date" style="width:100%"></div>
+          <div class="field"><label>Counterparty</label>
+            <input type="text" id="adj-party" placeholder="e.g. Legacy Run Organizers"></div>
+          <div class="field" id="adj-proj-wrap"><label>Project (optional)</label><select id="adj-proj"></select></div>
+          <div class="field full"><label>Reason for Offset</label>
+            <textarea id="adj-reason" placeholder="Explain why no cash changed hands — this is what an auditor will read first."></textarea></div>
+        </div>
+        <div class="adj-card">
+          <div style="font-weight:700;font-size:13px;color:#16a34a;margin-bottom:8px">💚 Income Side (what we're recognizing as raised)</div>
+          <div class="form-grid">
+            <div class="field"><label>Category</label><select id="adj-inc-cat"></select></div>
+            <div class="field"><label>Amount (₱)</label><input type="number" id="adj-inc-amount" placeholder="0.00" min="0" step="0.01" inputmode="decimal"></div>
+            <div class="field full"><label>Reference No. (optional)</label><input type="text" id="adj-inc-ref" placeholder="e.g. list of registrants covered"></div>
+          </div>
+        </div>
+        <div class="adj-card">
+          <div style="font-weight:700;font-size:13px;color:#dc2626;margin-bottom:8px">🔴 Expense Side (what we owed / are settling)</div>
+          <div class="form-grid">
+            <div class="field"><label>Category</label><select id="adj-exp-cat"></select></div>
+            <div class="field"><label>Amount (₱)</label><input type="number" id="adj-exp-amount" placeholder="0.00" min="0" step="0.01" inputmode="decimal"></div>
+            <div class="field full"><label>Reference No. (optional)</label><input type="text" id="adj-exp-ref" placeholder="e.g. receipts being reimbursed"></div>
+          </div>
+        </div>
+        <div class="field" style="max-width:260px"><label>Recorded By</label>
+          <input type="text" id="adj-by" placeholder="Officer name"></div>
+        <button class="btn-primary" onclick="addAdjustingEntry()">Record Adjusting Entry</button>
+        <div class="ok-msg" id="adj-ok-msg">✅ Adjusting entry recorded!</div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Adjusting Entries Recorded</div>
+        <div id="adj-list"><div class="tbl-empty">No adjusting entries yet.</div></div>
       </div>
     </div>
 
@@ -948,9 +998,119 @@ function addTxn() {
   }
 }
 
+/* ── ADJUSTING ENTRY (paired income+expense, no cash movement) ──
+   Both legs get a placeholder account name that never matches GCash/EastWest/
+   ChinaBank, so every existing account-balance calc and passbook filter already
+   excludes them for free — only Income/Expense category totals pick them up,
+   which is exactly what we want: recognized, not cash. */
+var ADJ_ACCOUNT = 'Non-Cash (Adjusting Entry)';
+
+function fillAdjCats() {
+  var incSel=el('adj-inc-cat'), expSel=el('adj-exp-cat');
+  if(incSel) incSel.innerHTML = CFG.incCats.map(function(c){ return '<option>'+c+'</option>'; }).join('');
+  if(expSel) expSel.innerHTML = CFG.expCats.map(function(c){ return '<option>'+c+'</option>'; }).join('');
+}
+
+function addAdjustingEntry() {
+  // Unlike regular cash transactions, auditors can record adjusting entries —
+  // they're the ones most likely to spot an unrecorded offset during review.
+  var date=qs('adj-date'), party=qs('adj-party').trim(), reason=qs('adj-reason').trim();
+  var proj=qs('adj-proj')||null;
+  var incCat=qs('adj-inc-cat'), incAmt=parseFloat(qs('adj-inc-amount')), incRef=qs('adj-inc-ref').trim();
+  var expCat=qs('adj-exp-cat'), expAmt=parseFloat(qs('adj-exp-amount')), expRef=qs('adj-exp-ref').trim();
+  var by=(qs('adj-by').trim()||currentUser&&currentUser.name||'');
+  if (!date) { alert('Enter a date.'); return; }
+  if (!party) { alert('Enter the counterparty this offset is with.'); return; }
+  if (!reason) { alert('Explain why no cash changed hands — this is required for the audit trail.'); return; }
+  if (!incAmt||incAmt<=0) { alert('Enter a valid income amount.'); return; }
+  if (!expAmt||expAmt<=0) { alert('Enter a valid expense amount.'); return; }
+
+  var groupId=uid(), now=new Date().toISOString();
+  var base={ project:proj, adjustmentGroupId:groupId, adjustmentParty:party, isAdjustment:true, recorded_by:by, description:reason };
+  var incTxn=Object.assign({ id:uid(), created_at:now, txn_date:date, type:'income',
+    amount:incAmt, account:ADJ_ACCOUNT, account_to:null, category:incCat,
+    contributor:party, ref_by:null, ref_no:incRef }, base);
+  var expTxn=Object.assign({ id:uid(), created_at:now, txn_date:date, type:'expense',
+    amount:expAmt, account:ADJ_ACCOUNT, account_to:null, category:expCat,
+    contributor:null, ref_by:null, ref_no:expRef }, base);
+  var aEntry={ id:uid(), created_at:now, action:'add',
+    detail:'Adjusting entry — '+party+' — Income P'+fmt(incAmt)+' ('+incCat+') offset against Expense P'+fmt(expAmt)+' ('+expCat+'), no cash movement. Reason: '+reason,
+    done_by:by||'Unknown' };
+
+  function clearForm() {
+    ['adj-party','adj-reason','adj-inc-amount','adj-inc-ref','adj-exp-amount','adj-exp-ref'].forEach(function(id){ var e=el(id); if(e) e.value=''; });
+    el('adj-date').value=today();
+    var ok=el('adj-ok-msg'); ok.style.display='block'; setTimeout(function(){ ok.style.display='none'; },3000);
+  }
+  if (db) {
+    var fbatch=db.batch();
+    fbatch.set(db.collection('fund_transactions').doc(incTxn.id), incTxn);
+    fbatch.set(db.collection('fund_transactions').doc(expTxn.id), expTxn);
+    fbatch.commit().then(function(){
+      return db.collection('fund_audit').doc(aEntry.id).set(aEntry);
+    }).then(clearForm).catch(function(e){ alert('Save error: '+e.message); });
+  } else {
+    TXN.unshift(expTxn); TXN.unshift(incTxn); AUDIT.unshift(aEntry); clearForm(); renderAll(); renderAdjusting();
+  }
+}
+
+function renderAdjusting() {
+  if(el('adj-date')&&!el('adj-date').value) el('adj-date').value=today();
+  fillAdjCats();
+  fillProjSel('adj-proj');
+  var groups={};
+  TXN.forEach(function(t){
+    if(!t.isAdjustment||!t.adjustmentGroupId) return;
+    if(!groups[t.adjustmentGroupId]) groups[t.adjustmentGroupId]={id:t.adjustmentGroupId,date:t.txn_date,party:t.adjustmentParty||'',reason:t.description||''};
+    groups[t.adjustmentGroupId][t.type]=t;
+  });
+  var list=Object.keys(groups).map(function(k){return groups[k];}).sort(function(a,b){return a.date>b.date?-1:a.date<b.date?1:0;});
+  var body=el('adj-list'); if(!body) return;
+  if(!list.length){ body.innerHTML='<div class="tbl-empty">No adjusting entries yet.</div>'; return; }
+  var canDel=role==='treasurer';
+  body.innerHTML=list.map(function(g){
+    var inc=g.income, exp=g.expense;
+    return '<div class="adj-card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">'+
+        '<div><span class="adj-pill">⚖️ Adjusting Entry</span> <strong style="margin-left:6px">'+g.party+'</strong>'+
+          '<div style="font-size:11px;color:#888;margin-top:2px">'+g.date+'</div></div>'+
+        (canDel?'<button class="btn-del" data-adjdel="'+g.id+'">Delete Both</button>':'<span class="lock-icon">locked</span>')+
+      '</div>'+
+      '<div class="adj-leg"><span>💚 '+(inc?inc.category:'— missing income side —')+(inc&&inc.ref_no?' · Ref: '+inc.ref_no:'')+'</span><span class="amt" style="color:#16a34a">+P'+fmt(inc?inc.amount:0)+'</span></div>'+
+      '<div class="adj-leg"><span>🔴 '+(exp?exp.category:'— missing expense side —')+(exp&&exp.ref_no?' · Ref: '+exp.ref_no:'')+'</span><span class="amt" style="color:#dc2626">−P'+fmt(exp?exp.amount:0)+'</span></div>'+
+      '<div style="font-size:12px;color:#555;margin-top:6px">'+g.reason+'</div>'+
+      '<div style="font-size:11px;color:#aaa;margin-top:4px">Recorded by: '+((inc&&inc.recorded_by)||(exp&&exp.recorded_by)||'—')+'</div>'+
+    '</div>';
+  }).join('');
+  body.onclick=function(e){ var t=e.target; while(t&&t!==body){ var gid=t.getAttribute('data-adjdel'); if(gid){ deleteAdjustingGroup(gid); return; } t=t.parentNode; } };
+}
+
+function deleteAdjustingGroup(groupId) {
+  if (role==='auditor') { alert('Auditors cannot delete.'); return; }
+  var legs=TXN.filter(function(t){ return t.adjustmentGroupId===groupId; });
+  if (!legs.length) return;
+  if (!confirm('Delete this adjusting entry — both the income and expense side? This cannot be undone.')) return;
+  var by=currentUser?currentUser.name:'Unknown';
+  var aEntry={ id:uid(), created_at:new Date().toISOString(), action:'delete',
+    detail:'Deleted adjusting entry — '+(legs[0].adjustmentParty||'')+' — '+legs.map(function(t){return t.type+' P'+fmt(t.amount)+' ('+t.category+')';}).join(' & '),
+    done_by:by };
+  if (db) {
+    var fbatch=db.batch();
+    legs.forEach(function(t){ fbatch.delete(db.collection('fund_transactions').doc(t.id)); });
+    fbatch.commit().then(function(){
+      return db.collection('fund_audit').doc(aEntry.id).set(aEntry);
+    }).catch(function(e){ alert('Delete error: '+e.message); });
+  } else {
+    var ids=legs.map(function(t){return t.id;});
+    TXN=TXN.filter(function(t){ return ids.indexOf(t.id)===-1; });
+    AUDIT.unshift(aEntry); renderAll(); renderAdjusting();
+  }
+}
+
 /* ── RENDER ── */
 function renderAll() {
   renderLedger(); renderAudit(); renderContribs(); renderPublic(); if(selectedAcct) renderPassbook();
+  var ta=el('tab-adjusting'); if(ta&&ta.classList.contains('active')) renderAdjusting();
   var rt=el('tab-report'); if(rt&&rt.classList.contains('active')) {
     var rp=el('rsec-projects'), rc=el('rsec-category');
     if(rp&&rp.style.display!=='none') renderProjectReport();
@@ -1048,6 +1208,7 @@ function renderLedger() {
       '<div class="lcard-row1"><div class="lcard-badges">'+
         '<span class="type-tag '+t.type+'">'+t.type+'</span>'+
         '<span class="cat-pill">'+(t.category||'—')+'</span>'+
+        (t.isAdjustment?'<span class="adj-pill">⚖️ Adjusting Entry</span>':'')+
         (t.project?'<span class="proj-pill">'+t.project+'</span>':'')+
         '<span class="acct-tag">'+acctLabel+'</span>'+
       '</div><div class="lcard-amt '+t.type+'">'+(signs[t.type]||'')+'P'+fmt(t.amount)+'</div></div>'+
@@ -1142,7 +1303,8 @@ function triggerDel(id){
   if(role==='auditor'){alert('Auditors cannot delete.');return;}
   var t=TXN.find(function(x){return x.id===id;}); if(!t) return;
   pendingDel=id;
-  el('del-body').innerHTML='<strong>P'+fmt(t.amount)+' — '+t.category+' — '+t.account+'</strong><br><span style="font-size:12px;color:#888">'+(t.description||'')+'</span><br><br>This will be logged in the audit trail.';
+  var adjWarn=t.isAdjustment?'<br><br><span style="font-size:12px;color:#b45309;font-weight:700">⚠️ This is one side of a paired Adjusting Entry. Deleting only this side will leave the offset unbalanced — delete both sides together from the Adjusting Entry tab instead.</span>':'';
+  el('del-body').innerHTML='<strong>P'+fmt(t.amount)+' — '+t.category+' — '+t.account+'</strong><br><span style="font-size:12px;color:#888">'+(t.description||'')+'</span>'+adjWarn+'<br><br>This will be logged in the audit trail.';
   el('del-modal').classList.add('open');
 }
 function closeDelModal(){el('del-modal').classList.remove('open');pendingDel=null;}
@@ -2309,11 +2471,13 @@ function selectProject(name) {
 
 /* ── TABS ── */
 function goTab(tab){
-  ['add','ledger','accounts','contributors','audit','payments','report','settings'].forEach(function(t){
+  ['add','adjusting','ledger','accounts','contributors','audit','payments','report','settings'].forEach(function(t){
     var s=el('sec-'+t); if(s) s.style.display=t===tab?'block':'none';
     var b=el('tab-'+t); if(b) b.classList.toggle('active',t===tab);
   });
   if(tab==='add'&&currentUser)  el('f-by').value=el('f-by').value||currentUser.name;
+  if(tab==='adjusting'&&currentUser) el('adj-by').value=el('adj-by').value||currentUser.name;
+  if(tab==='adjusting')    renderAdjusting();
   if(tab==='ledger')       renderLedger();
   if(tab==='accounts')     renderPassbook();
   if(tab==='contributors') renderContribs();
