@@ -621,14 +621,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
       <div id="rsec-category" style="display:none">
         <div class="panel">
-          <div class="panel-title">By Category — All Time</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="panel-title" style="margin-bottom:0">By Category — All Time</div>
+            <button class="btn-export" id="btn-export-cat" onclick="exportCategoryExcel()">⬇ Export Excel</button>
+          </div>
           <div id="category-report-body"><div class="tbl-empty">Loading...</div></div>
         </div>
       </div>
 
       <div id="rsec-projects" style="display:none">
         <div class="panel">
-          <div class="panel-title">Project Performance</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="panel-title" style="margin-bottom:0">Project Performance</div>
+            <button class="btn-export" id="btn-export-proj" onclick="exportProjectExcel()">⬇ Export Excel</button>
+          </div>
           <div id="proj-report-body"><div class="tbl-empty">Loading...</div></div>
         </div>
       </div>
@@ -1798,17 +1804,24 @@ function toggleDrillDown(row) {
   });
 }
 
+// Lazy-loads the XLSX library once, shared by every "Export Excel" button.
+// Returns true if already loaded and ready to proceed; otherwise starts the
+// load, disables btnId while loading, and calls retryFn again once ready.
+function ensureXLSX(btnId, retryFn) {
+  if(typeof XLSX!=='undefined') return true;
+  var btn=el(btnId); if(btn){btn.textContent='Loading...';btn.disabled=true;}
+  var s=document.createElement('script');
+  s.src='https://unpkg.com/xlsx/dist/xlsx.full.min.js';
+  s.onload=function(){ if(btn){btn.textContent='⬇ Export Excel';btn.disabled=false;} retryFn(); };
+  s.onerror=function(){ alert('Could not load Excel library. Check your internet connection.'); if(btn){btn.textContent='⬇ Export Excel';btn.disabled=false;} };
+  document.head.appendChild(s);
+  return false;
+}
+
 function exportExcel() {
   var month=qs('r-month');
   if(!month){alert('Select a month first.');return;}
-  if(typeof XLSX==='undefined'){
-    var btn=el('btn-export'); if(btn){btn.textContent='Loading...';btn.disabled=true;}
-    var s=document.createElement('script');
-    s.src='https://unpkg.com/xlsx/dist/xlsx.full.min.js';
-    s.onload=function(){if(btn){btn.textContent='⬇ Export Excel';btn.disabled=false;}exportExcel();};
-    s.onerror=function(){alert('Could not load Excel library. Check your internet connection.');if(btn){btn.textContent='⬇ Export Excel';btn.disabled=false;}};
-    document.head.appendChild(s);return;
-  }
+  if(!ensureXLSX('btn-export', exportExcel)) return;
   var d=getReportData(month), accounts=['GCash','EastWest','ChinaBank'];
   var wb=XLSX.utils.book_new();
 
@@ -1848,6 +1861,131 @@ function exportExcel() {
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s3),'Contributors');
 
   XLSX.writeFile(wb,'SSA-Fund-'+month+'.xlsx');
+}
+
+// Builds a flat, sortable transaction list for one type (income/expense), sorted by
+// category then date, with a subtotal row after each category and a grand total at
+// the end — the standard "transaction detail by category" working-paper format.
+function categoryDetailRows(d, type, catRows) {
+  var rows=[['Category','Date','Amount','Contributor / From','Account','Reference No','Description','Recorded By']];
+  var grandAmt=0, grandCount=0;
+  catRows.forEach(function(cr){
+    var cat=cr[0];
+    var txns=d.inMonth.filter(function(t){return t.type===type&&t.category===cat;})
+      .slice().sort(function(a,b){return a.txn_date>b.txn_date?1:-1;});
+    txns.forEach(function(t){
+      rows.push([cat,t.txn_date,t.amount,t.contributor||'',t.account||'',t.ref_no||'',t.description||'',t.recorded_by||'']);
+    });
+    rows.push(['Subtotal — '+cat,'',cr[1],txns.length+' txn'+(txns.length===1?'':'s'),'','','','']);
+    rows.push([]);
+    grandAmt+=cr[1]; grandCount+=txns.length;
+  });
+  rows.push(['GRAND TOTAL','',grandAmt,grandCount+' txns','','','','']);
+  return rows;
+}
+
+function exportCategoryExcel() {
+  if(!ensureXLSX('btn-export-cat', exportCategoryExcel)) return;
+  var d=getReportData('ALL');
+  var wb=XLSX.utils.book_new();
+  var incRows=Object.keys(d.incMap).map(function(k){return[k,d.incMap[k]];}).sort(function(a,b){return b[1]-a[1];});
+  var expRows=Object.keys(d.expMap).map(function(k){return[k,d.expMap[k]];}).sort(function(a,b){return b[1]-a[1];});
+  function countFor(type,cat){ return d.inMonth.filter(function(t){return t.type===type&&t.category===cat;}).length; }
+  var incCount=d.inMonth.filter(function(t){return t.type==='income';}).length;
+  var expCount=d.inMonth.filter(function(t){return t.type==='expense';}).length;
+  var xferCount=d.inMonth.filter(function(t){return t.type==='transfer';}).length;
+
+  // Sheet 1: Summary — materiality-first (largest categories first), with counts
+  // and share-of-total so a reviewer can spot anything disproportionate at a glance.
+  var s1=[
+    ['SSA HOMECOMING FUND — Category Report'],
+    ['Scope:','All Time (since inception)'],
+    ['Generated:',new Date().toLocaleString('en-PH')],
+    ['Prepared for:','Audit / Board Review'],
+    [],
+    ['INCOME BY CATEGORY'],
+    ['Category','Amount','No. of Txns','% of Income']
+  ];
+  incRows.forEach(function(r){ s1.push([r[0],r[1],countFor('income',r[0]),d.totalInc>0?+(r[1]/d.totalInc*100).toFixed(1):0]); });
+  s1.push(['TOTAL INCOME',d.totalInc,incCount,100],[],
+    ['EXPENSES BY CATEGORY'],['Category','Amount','No. of Txns','% of Expenses']);
+  expRows.forEach(function(r){ s1.push([r[0],r[1],countFor('expense',r[0]),d.totalExp>0?+(r[1]/d.totalExp*100).toFixed(1):0]); });
+  s1.push(['TOTAL EXPENSES',d.totalExp,expCount,100],[],
+    ['NET (Income − Expenses)',d.totalInc-d.totalExp],[],
+    ['RECONCILIATION CHECK'],
+    ['Total ledger entries (all types):',TXN.length],
+    ['Income + Expense entries summarized above:',incCount+expCount],
+    ['Transfers (excluded — internal movement between accounts, not income/expense):',xferCount]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'Summary');
+
+  // Sheets 2-3: full detail, grouped by category with subtotals — traces every peso
+  // in the Summary sheet back to its source transaction.
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(categoryDetailRows(d,'income',incRows)),'Income Detail');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(categoryDetailRows(d,'expense',expRows)),'Expense Detail');
+
+  XLSX.writeFile(wb,'SSA-Fund-ByCategory-AllTime.xlsx');
+}
+
+function exportProjectExcel() {
+  if(!ensureXLSX('btn-export-proj', exportProjectExcel)) return;
+  var projMap={};
+  TXN.forEach(function(t){
+    if(!t.project) return;
+    if(!projMap[t.project]) projMap[t.project]={name:t.project,income:0,expense:0,txns:[]};
+    if(t.type==='income')  projMap[t.project].income  += t.amount;
+    if(t.type==='expense') projMap[t.project].expense += t.amount;
+    projMap[t.project].txns.push(t);
+  });
+  var projects=Object.keys(projMap).map(function(k){return projMap[k];});
+  projects.sort(function(a,b){return (b.income-b.expense)-(a.income-a.expense);});
+
+  var wb=XLSX.utils.book_new();
+
+  // Sheet 1: Summary — actual vs. target/budget, the standard variance-analysis view
+  // an auditor checks first: is each project on track against what was planned?
+  var s1=[
+    ['SSA HOMECOMING FUND — Project Performance Report'],
+    ['Scope:','All Time (since inception)'],
+    ['Generated:',new Date().toLocaleString('en-PH')],
+    ['Prepared for:','Audit / Board Review'],
+    [],
+    ['Project','Income','Target Income','Income % of Target','Expense','Budget','Expense % of Budget','Net','No. of Txns']
+  ];
+  var tInc=0,tExp=0,tCnt=0;
+  projects.forEach(function(p){
+    var tgt=(CFG.projectTargets&&CFG.projectTargets[p.name])||{};
+    var targetInc=parseFloat(tgt.targetIncome)||0;
+    var targetExp=parseFloat(tgt.targetExpense)||0;
+    s1.push([p.name,p.income,targetInc||'',targetInc>0?+(p.income/targetInc*100).toFixed(1):'',
+      p.expense,targetExp||'',targetExp>0?+(p.expense/targetExp*100).toFixed(1):'',
+      p.income-p.expense,p.txns.length]);
+    tInc+=p.income; tExp+=p.expense; tCnt+=p.txns.length;
+  });
+  s1.push(['TOTAL — ALL PROJECTS',tInc,'','',tExp,'','',tInc-tExp,tCnt],[],
+    ['Note: Only transactions explicitly tagged with a Project are included. Untagged income/expense is excluded here — see the By Category or By Period reports for the complete ledger.']);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'Summary');
+
+  // Sheet 2: Detail — grouped by project, chronological within each, with subtotals —
+  // traces every peso in the Summary sheet back to its source transaction.
+  var s2=[['Project','Date','Type','Category','Amount','Contributor / From','Account','Reference No','Description','Recorded By']];
+  var grandInc=0, grandExp=0;
+  projects.forEach(function(p){
+    var txns=p.txns.slice().sort(function(a,b){return a.txn_date>b.txn_date?1:-1;});
+    txns.forEach(function(t){
+      s2.push([p.name,t.txn_date,t.type,t.category||'',t.amount,t.contributor||'',t.account||'',t.ref_no||'',t.description||'',t.recorded_by||'']);
+    });
+    s2.push(['','','','Subtotal — Income',p.income,'','','','','']);
+    s2.push(['','','','Subtotal — Expense',p.expense,'','','','','']);
+    s2.push(['','','','Net',p.income-p.expense,'','','','','']);
+    s2.push([]);
+    grandInc+=p.income; grandExp+=p.expense;
+  });
+  s2.push(['GRAND TOTAL','','','Income',grandInc,'','','','','']);
+  s2.push(['','','','Expense',grandExp,'','','','','']);
+  s2.push(['','','','Net',grandInc-grandExp,'','','','','']);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'Project Detail');
+
+  XLSX.writeFile(wb,'SSA-Fund-ByProject-AllTime.xlsx');
 }
 
 /* ── SETTINGS ── */
