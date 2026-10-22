@@ -367,7 +367,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
           <div class="gcash-amount" id="gcash-amount-display">₱1,000.00</div>
           <div id="gcash-early-bird" style="font-size:.72rem;background:rgba(255,255,255,.2);border-radius:100px;padding:3px 10px;margin-top:4px;display:none">🐦 Early Bird Rate</div>
           <div class="gcash-tip" id="gcash-tip-msg">💬 Put your full name as the GCash message/note</div>
-          <div id="gcash-tip-earlybird" style="font-size:.68rem;opacity:.75;margin-top:4px;display:none">⏰ Early bird rate ends September 30, 2026</div>
+          <div id="gcash-tip-earlybird" style="font-size:.68rem;opacity:.75;margin-top:4px;display:none">⏰ Early bird rate ends October 31, 2026</div>
         </div>
         <p style="font-size:.82rem;color:var(--muted);margin-bottom:.85rem">After sending, screenshot your receipt and upload it below.</p>
         <div class="upload-zone" id="upload-zone" onclick="document.getElementById('receipt-file').click()">
@@ -596,7 +596,7 @@ const CFG = {
   gcashNumber: '0920-811-3650',
   regFee: 1000,
   earlyBirdFee: 850,
-  earlyBirdDeadline: new Date('2026-09-30T23:59:59'), // Early bird ends Sep 30, 2026
+  earlyBirdDeadline: new Date('2026-10-31T23:59:59'), // Early bird ends Oct 31, 2026
   emailjs: { serviceId:'service_nzcr4dj', templateId:'template_gcp28qm', publicKey:'YgwYP-kgsPxFCUq8b' }
 };
 
@@ -1223,10 +1223,10 @@ function initFeePreview() {
   if(badgeEl)  badgeEl.style.display = fee.isEarlyBird ? 'block' : 'none';
   if(noteEl) {
     if(fee.isEarlyBird) {
-      noteEl.innerHTML = '⏰ Early bird rate ends <strong>September 30, 2026</strong>. Regular rate is ₱1,000.';
+      noteEl.innerHTML = '⏰ Early bird rate ends <strong>October 31, 2026</strong>. Regular rate is ₱1,000.';
       noteEl.style.color = '#92400e';
     } else {
-      noteEl.innerHTML = 'Early bird rate of <strong>₱850</strong> ended September 30, 2026.';
+      noteEl.innerHTML = 'Early bird rate of <strong>₱850</strong> ended October 31, 2026.';
       noteEl.style.color = 'var(--muted)';
     }
   }

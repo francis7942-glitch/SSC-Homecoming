@@ -1534,7 +1534,7 @@ function renderPayments(){
     else if(r.registrationFee) regFee=r.registrationFee;
     else if(r.amount)     regFee=r.amount;
     else if(r.fee)        regFee=r.fee;
-    else{var rd='';if(r.createdAt&&r.createdAt.toDate){try{rd=r.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(r.createdAt){rd=(r.createdAt+'').split('T')[0];}regFee=(rd&&rd<='2026-09-30')?850:1000;}
+    else{var rd='';if(r.createdAt&&r.createdAt.toDate){try{rd=r.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(r.createdAt){rd=(r.createdAt+'').split('T')[0];}regFee=(rd&&rd<='2026-10-31')?850:1000;}
     var html='<div class="pcard '+(r.status==='paid'?'approved':r.status==='rejected'?'rejected':'')+'">';
     html+='<div class="pcard-top"><div><div class="pcard-name">'+name+(isGroup?' <span style="font-size:11px;font-weight:700;color:#7c5b00;background:#fef3c7;padding:2px 8px;border-radius:100px;vertical-align:middle">👥 Group · '+(r.groupQty||0)+' slots</span>':'')+'</div><div class="pcard-batch">Batch '+(r.batch||'—')+' · '+(r.id||'')+'</div></div>';
     html+='<div style="text-align:right"><div class="pcard-amount">P'+fmt(regFee)+'</div><span class="p-status-badge '+statusCls+'">'+statusTxt+'</span><div style="font-size:10px;color:#aaa;margin-top:2px">'+(isGroup?(r.groupQty||0)+' × P'+fmt(r.feePerPerson||0):(regFee<=850?'Early Bird':'Regular'))+'</div></div></div>';
@@ -1582,7 +1582,7 @@ function approvePayment(regId,name){
       if(reg.registrationFee) txnAmount=reg.registrationFee;
       else if(reg.amount)     txnAmount=reg.amount;
       else if(reg.fee)        txnAmount=reg.fee;
-      else{var rd='';if(reg.createdAt&&reg.createdAt.toDate){try{rd=reg.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(reg.createdAt){rd=(reg.createdAt+'').split('T')[0];}txnAmount=(rd&&rd<='2026-09-30')?850:1000;}
+      else{var rd='';if(reg.createdAt&&reg.createdAt.toDate){try{rd=reg.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(reg.createdAt){rd=(reg.createdAt+'').split('T')[0];}txnAmount=(rd&&rd<='2026-10-31')?850:1000;}
     }
     var txn={id:uid(),created_at:new Date().toISOString(),txn_date:new Date().toISOString().split('T')[0],
       type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',
