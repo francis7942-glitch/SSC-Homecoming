@@ -538,6 +538,7 @@ td{padding:7px 10px;border-bottom:1px solid var(--cream2);vertical-align:middle}
             oninput="renderAdminRegs()"
             style="flex:1;min-width:150px;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:.85rem;outline:none;background:#fff;-webkit-appearance:none"/>
           <button id="admin-clear-btn" onclick="clearAdminSearch()" style="display:none;background:var(--cream2);border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;cursor:pointer;font-size:.82rem;color:var(--muted);font-family:'Outfit',sans-serif">✕ Clear</button>
+          <button onclick="printGuestList()" style="background:var(--navy);color:var(--gold);border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Outfit',sans-serif;white-space:nowrap">🖨️ Print Guest List</button>
         </div>
         <!-- Tappable stat cards — double as quick filters -->
         <div class="stats" id="admin-stats"></div>
@@ -1632,6 +1633,71 @@ function clearAdminSearch() {
   const btn = document.getElementById('admin-clear-btn');
   if(btn) btn.style.display = 'none';
   renderAdminRegs();
+}
+
+// Opens a clean, standalone printable roster of every confirmed guest — one row
+// per attendee (individual registrations + each named group slot), sorted by
+// batch then name — for staff to physically check off at the door.
+function printGuestList() {
+  const rows = [];
+  adminRegs.forEach(r => {
+    if (r.status !== 'paid') return; // only confirmed guests belong on the door list
+    if (r.type === 'group') return;  // the group record itself isn't an individual attendee
+    let name, note;
+    if (r.type === 'group_slot') {
+      name = (r.assignedName && r.assignedName.trim()) || 'Unassigned Guest';
+      note = 'Group of ' + (r.groupRep || '—');
+    } else {
+      name = (r.firstName + ' ' + r.lastName).trim() || '—';
+      note = '';
+    }
+    rows.push({ name, batch: r.batch || '—', id: r.id, note });
+  });
+  if (!rows.length) { alert('No confirmed guests to print yet.'); return; }
+  rows.sort((a, b) => {
+    const ba = String(a.batch), bb = String(b.batch);
+    if (ba !== bb) return ba.localeCompare(bb, undefined, { numeric: true });
+    return a.name.localeCompare(b.name);
+  });
+
+  const rowsHtml = rows.map((r, i) => `
+    <tr>
+      <td class="num">${i + 1}</td>
+      <td class="chk">☐</td>
+      <td class="name">${r.name}${r.note ? `<div class="note">${r.note}</div>` : ''}</td>
+      <td>${r.batch}</td>
+      <td class="id">${r.id}</td>
+      <td class="sig"></td>
+    </tr>`).join('');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Guest List</title><style>
+    body{font-family:Georgia,serif;margin:24px;color:#0d1b3e}
+    h1{font-size:20px;margin:0 0 2px}
+    .sub{font-size:12px;color:#555;margin-bottom:4px}
+    .meta{font-size:11px;color:#888;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}
+    th{background:#f3f0e8;text-transform:uppercase;font-size:10px;letter-spacing:.03em}
+    .num{width:30px;text-align:center}
+    .chk{width:30px;text-align:center;font-size:14px}
+    .id{font-family:monospace;font-size:10px;color:#666;white-space:nowrap}
+    .note{font-size:10px;color:#888;margin-top:2px}
+    .sig{width:110px}
+    @media print{body{margin:10mm} tr{break-inside:avoid}}
+  </style></head><body>
+    <h1>St. Scholastica's Academy — Alumni Homecoming 2027</h1>
+    <div class="sub">Confirmed Guest List</div>
+    <div class="meta">Generated ${new Date().toLocaleString('en-PH')} · ${rows.length} confirmed guest${rows.length === 1 ? '' : 's'}</div>
+    <table><thead><tr><th>#</th><th>✓</th><th>Name</th><th>Batch</th><th>Reg. ID</th><th>Signature</th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Please allow pop-ups to print the guest list.'); return; }
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 300);
 }
 
 function renderAdminStats() {
