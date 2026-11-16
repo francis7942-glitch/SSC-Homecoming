@@ -1585,7 +1585,7 @@ function approvePayment(regId,name){
       else{var rd='';if(reg.createdAt&&reg.createdAt.toDate){try{rd=reg.createdAt.toDate().toISOString().split('T')[0];}catch(e){}}else if(reg.createdAt){rd=(reg.createdAt+'').split('T')[0];}txnAmount=(rd&&rd<='2026-10-31')?850:1000;}
     }
     var txn={id:uid(),created_at:new Date().toISOString(),txn_date:new Date().toISOString().split('T')[0],
-      type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',
+      type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',project:'Homecoming',
       contributor:name,ref_no:'SSA-REG-'+regId.slice(-6).toUpperCase(),
       recorded_by:'Fund Manager (Auto)',description:'SSA Homecoming registration - '+name+' (P'+txnAmount+')'};
     var aEntry={id:uid(),created_at:new Date().toISOString(),action:'add',
@@ -1618,7 +1618,7 @@ function approveGroupPayment(regId,name){
   });
   fbatch.commit().then(function(){
     var txn={id:uid(),created_at:new Date().toISOString(),txn_date:new Date().toISOString().split('T')[0],
-      type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',
+      type:'income',amount:txnAmount,account:'GCash',account_to:null,category:'Registration Fee',project:'Homecoming',
       contributor:name,ref_no:'SSA-REG-'+regId.slice(-6).toUpperCase(),
       recorded_by:'Fund Manager (Auto)',description:'SSA Homecoming group registration - '+name+' ('+qty+' slots, P'+txnAmount+')'};
     var aEntry={id:uid(),created_at:new Date().toISOString(),action:'add',
@@ -2156,12 +2156,15 @@ function fillProjSel(selId) {
   sel.innerHTML='<option value="">— No Project —</option>'+CFG.projects.map(function(p){return'<option>'+p+'</option>';}).join('');
 }
 function updateAddProjectField() {
-  var show=(txnType==='income'&&qs('f-cat')==='Fundraising Activity')||txnType==='expense';
+  // Any income or expense can belong to a project (e.g. Registration Fee income
+  // under "Homecoming") — only transfers, which move money between our own
+  // accounts rather than in/out, have no project concept.
+  var show=txnType!=='transfer';
   var wrap=el('f-proj-wrap'); if(wrap) wrap.style.display=show?'flex':'none';
   if(show) fillProjSel('f-proj');
 }
 function updateEditProjectField() {
-  var show=(editTxnType==='income'&&el('e-cat')&&el('e-cat').value==='Fundraising Activity')||editTxnType==='expense';
+  var show=editTxnType!=='transfer';
   var wrap=el('e-proj-wrap'); if(wrap) wrap.style.display=show?'flex':'none';
   if(show) fillProjSel('e-proj');
 }
