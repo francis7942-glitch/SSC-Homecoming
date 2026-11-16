@@ -834,7 +834,7 @@ var FIREBASE_CFG = {
 /* ── STATE ── */
 var role = null, currentUser = null, pendingRole = null, txnType = 'income', pendingDel = null, pendingEdit = null, editTxnType = 'income', monthFilter = null, lastReportData = null;
 var db = null, allRegistrations = [], paymentFilter = 'pending', receiptCache = {};
-var selectedAcct = 'GCash', acctSortDir = 'desc', selectedProject = null;
+var selectedAcct = 'GCash', acctSortDir = 'desc', selectedProject = null, selectedCategory = null;
 
 var TXN   = [];
 var AUDIT = [];
@@ -1863,13 +1863,94 @@ function renderReport() {
 // without first having to pick a month.
 function renderCategoryReport() {
   var body=el('category-report-body'); if(!body) return;
-  var d=getReportData('ALL');
-  var html=categoryTablesHtml(d, 'recorded yet');
-  body.innerHTML=html;
-  lastReportData=d;
-  document.querySelectorAll('#category-report-body .report-cat-row').forEach(function(row){
-    row.addEventListener('click',function(){ toggleDrillDown(row); });
+  var catMap={};
+  TXN.forEach(function(t){
+    if(t.type!=='income'&&t.type!=='expense') return; // transfers aren't income/expense by category
+    if(!t.category) return;
+    if(!catMap[t.category]) catMap[t.category]={name:t.category,income:0,expense:0,txns:[]};
+    if(t.type==='income')  catMap[t.category].income  += t.amount;
+    if(t.type==='expense') catMap[t.category].expense += t.amount;
+    catMap[t.category].txns.push(t);
   });
+  var cats=Object.keys(catMap).map(function(k){return catMap[k];});
+  cats.sort(function(a,b){return (b.income+b.expense)-(a.income+a.expense);}); // materiality-first
+  if(!cats.length){
+    body.innerHTML='<div class="tbl-empty">No transactions yet.</div>';
+    return;
+  }
+  if(selectedCategory&&!catMap[selectedCategory]) selectedCategory=null;
+
+  var selectorHtml='<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">'+
+    '<button class="acct-sel-btn'+(selectedCategory===null?' active':'')+'" onclick="selectCategory(null)">All</button>';
+  cats.forEach(function(c){
+    selectorHtml+='<button class="acct-sel-btn'+(selectedCategory===c.name?' active':'')+'" onclick="selectCategory(\''+c.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'+c.name+'</button>';
+  });
+  selectorHtml+='</div>';
+  var html=selectorHtml;
+  var displayCats=selectedCategory?cats.filter(function(c){return c.name===selectedCategory;}):cats;
+
+  if(!selectedCategory){
+    var tInc=cats.reduce(function(s,c){return s+c.income;},0);
+    var tExp=cats.reduce(function(s,c){return s+c.expense;},0);
+    var tNet=tInc-tExp;
+    html+='<div class="report-section"><div class="report-section-title">All Categories Combined</div>'+
+      '<div class="report-bal-grid" style="grid-template-columns:repeat(2,1fr)">'+
+      '<div class="report-bal-card"><div class="rb-label">Total Income</div><div class="rb-close" style="color:#16a34a">+₱'+fmt(tInc)+'</div></div>'+
+      '<div class="report-bal-card"><div class="rb-label">Total Expenses</div><div class="rb-close" style="color:#dc2626">−₱'+fmt(tExp)+'</div></div>'+
+      '</div>'+
+      '<div style="background:'+(tNet>=0?'#f0fdf4':'#fef2f2')+';border:1px solid '+(tNet>=0?'#bbf7d0':'#fecaca')+';border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
+        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;color:#888">Combined Net</div>'+
+        '<div style="font-size:20px;font-weight:700;font-family:monospace;color:'+(tNet>=0?'#16a34a':'#dc2626')+'">'+(tNet>=0?'+':'−')+'₱'+fmt(Math.abs(tNet))+'</div>'+
+      '</div></div>';
+  }
+
+  displayCats.forEach(function(c){
+    var net=c.income-c.expense;
+    var pct=c.income>0?Math.round(net/c.income*100):0;
+    var incCard='<div class="report-bal-card"><div class="rb-label">Income</div><div class="rb-close" style="color:#16a34a">+₱'+fmt(c.income)+'</div></div>';
+    var expCard='<div class="report-bal-card"><div class="rb-label">Expenses</div><div class="rb-close" style="color:#dc2626">−₱'+fmt(c.expense)+'</div></div>';
+    var netCard='<div class="report-bal-card" style="background:'+(net>=0?'#f0fdf4':'#fef2f2')+'">'+
+      '<div class="rb-label">Net'+(c.income>0?' ('+pct+'%)':'')+'</div>'+
+      '<div class="rb-close" style="color:'+(net>=0?'#16a34a':'#dc2626')+'">'+(net>=0?'+':'−')+'₱'+fmt(Math.abs(net))+'</div>'+
+    '</div>';
+    html+='<div class="report-section" style="border-top:2px solid #e0e0e0;padding-top:16px">'+
+      '<div class="report-section-title">'+c.name.toUpperCase()+
+        '<span style="float:right;font-size:11px;font-weight:400;color:#aaa">'+c.txns.length+' transaction'+(c.txns.length===1?'':'s')+'</span>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+
+        incCard+expCard+netCard+
+      '</div>';
+    var sorted=c.txns.slice().sort(function(a,b){return a.txn_date>b.txn_date?1:-1;});
+    html+='<table class="report-table"><thead><tr>'+
+      '<th>Date</th><th>Type</th><th>Project</th><th>Description / Contributor</th><th style="text-align:right">Amount</th>'+
+    '</tr></thead><tbody>';
+    sorted.forEach(function(t){
+      var isInc=t.type==='income', color=isInc?'#16a34a':'#dc2626', sign=isInc?'+':'−';
+      var label=t.contributor||t.description||'—';
+      html+='<tr>'+
+        '<td><span class="ab-date">'+t.txn_date+'</span></td>'+
+        '<td><span class="type-tag '+t.type+'">'+t.type+'</span></td>'+
+        '<td>'+(t.project?'<span class="proj-pill">'+t.project+'</span>':'—')+'</td>'+
+        '<td style="font-size:12px;color:#555">'+label+(t.ref_by?'<div style="font-size:10px;color:#7c3aed;margin-top:2px">Ref by: '+t.ref_by+'</div>':'')+'</td>'+
+        '<td style="text-align:right;font-family:monospace;font-weight:700;color:'+color+'">'+sign+'₱'+fmt(t.amount)+'</td>'+
+      '</tr>';
+    });
+    var subInc=sorted.filter(function(t){return t.type==='income';}).reduce(function(s,t){return s+t.amount;},0);
+    var subExp=sorted.filter(function(t){return t.type==='expense';}).reduce(function(s,t){return s+t.amount;},0);
+    html+='<tr class="total-row">'+
+      '<td colspan="4"><strong>Total</strong></td>'+
+      '<td style="text-align:right;font-family:monospace">'+
+        (subInc?'<span style="color:#16a34a">+₱'+fmt(subInc)+'</span>':'')+
+        (subInc&&subExp?' / ':'')+
+        (subExp?'<span style="color:#dc2626">−₱'+fmt(subExp)+'</span>':'')+
+      '</td></tr>';
+    html+='</tbody></table></div>';
+  });
+  body.innerHTML=html;
+}
+function selectCategory(name) {
+  selectedCategory=name;
+  renderCategoryReport();
 }
 
 function drillItemHtml(t, color, sign) {
