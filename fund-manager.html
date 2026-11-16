@@ -461,6 +461,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
       <button class="sec-tab"        id="tab-audit"         onclick="goTab('audit')">🔍 Audit Log</button>
       <button class="sec-tab"        id="tab-payments"      onclick="goTab('payments')">💳 Payments <span id="payments-badge" style="display:none;background:#dc2626;color:#fff;font-size:10px;padding:1px 6px;border-radius:20px;margin-left:4px;font-weight:700"></span></button>
       <button class="sec-tab"        id="tab-report"        onclick="goTab('report')">📊 Report</button>
+      <button class="sec-tab"        id="tab-close"         onclick="goTab('close')">🔒 Close Books</button>
       <button class="sec-tab"        id="tab-settings"      onclick="goTab('settings')" style="display:none">⚙️ Settings</button>
     </div>
 
@@ -637,6 +638,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         <div class="panel-title">Audit Trail</div>
         <div id="audit-list"></div>
         <div class="tbl-empty" id="audit-empty" style="display:none">No entries yet.</div>
+      </div>
+    </div>
+
+    <!-- CLOSE BOOKS -->
+    <div id="sec-close" style="display:none">
+      <div class="panel">
+        <div class="panel-title">Close Books</div>
+        <p style="font-size:12px;color:#888;margin:-6px 0 14px">
+          Once a project or a month has been finished and audited, the auditor can close it here —
+          no transaction can then be added, edited, or deleted against it, by anyone, until it's
+          reopened. Everyone can see what's closed; only the auditor can toggle it.
+        </p>
+        <div class="report-section-title">Projects</div>
+        <div id="close-projects-list" style="margin-bottom:18px"></div>
+        <div class="report-section-title">Periods (Months)</div>
+        <div id="close-periods-list"></div>
       </div>
     </div>
 
@@ -820,6 +837,8 @@ var CFG = {
   expCats: ['Venue','Food & Beverage','Decorations','Supplies & Materials','Honorarium','Transportation','Communication','Marketing','Bank Charges','Return/Refund','Miscellaneous Expense'],
   projects: ['Legacy Run','Raffle','Movie','Merchandise Sales'],
   projectTargets: {},
+  closedProjects: [],
+  closedPeriods: [],
 };
 
 var FIREBASE_CFG = {
@@ -968,6 +987,22 @@ function setType(t,btn) {
   updateAddProjectField();
 }
 
+/* ── CLOSED PROJECTS / PERIODS (audit lock) ──
+   Once the auditor closes a project or a month, no transaction can be added,
+   edited, or deleted against it — by anyone, auditor included. Reopen first. */
+function checkLocked(project, dateStr) {
+  if (project && CFG.closedProjects && CFG.closedProjects.indexOf(project)!==-1) {
+    return 'Project "'+project+'" is closed and audited — no changes are allowed. Ask the auditor to reopen it first.';
+  }
+  if (dateStr) {
+    var period=dateStr.slice(0,7);
+    if (CFG.closedPeriods && CFG.closedPeriods.indexOf(period)!==-1) {
+      return 'The period '+fmtMon(period)+' is closed and audited — no changes are allowed. Ask the auditor to reopen it first.';
+    }
+  }
+  return null;
+}
+
 /* ── ADD TXN ── */
 function addTxn() {
   if (role==='auditor') { alert('Auditors are read-only.'); return; }
@@ -976,7 +1011,8 @@ function addTxn() {
   var from=qs('f-from').trim(), ref=qs('f-ref').trim(), by=(qs('f-by').trim()||currentUser&&currentUser.name||''), desc=qs('f-desc').trim();
   if (!date||!amount||amount<=0) { alert('Enter a valid date and amount.'); return; }
   if (txnType==='transfer'&&acct===acct2) { alert('From and To accounts must differ.'); return; }
-  var proj=(txnType==='income'&&cat==='Fundraising Activity')||txnType==='expense'?(qs('f-proj')||null):null;
+  var proj=txnType!=='transfer'?(qs('f-proj')||null):null;
+  var lockMsg=checkLocked(proj,date); if(lockMsg){ alert(lockMsg); return; }
   var refBy=txnType==='income'?(qs('f-refby').trim()||null):null;
   var t = { id:uid(), created_at:new Date().toISOString(), txn_date:date, type:txnType,
     amount:amount, account:acct, account_to:txnType==='transfer'?acct2:null, category:cat,
@@ -1024,6 +1060,7 @@ function addAdjustingEntry() {
   if (!reason) { alert('Explain why no cash changed hands — this is required for the audit trail.'); return; }
   if (!incAmt||incAmt<=0) { alert('Enter a valid income amount.'); return; }
   if (!expAmt||expAmt<=0) { alert('Enter a valid expense amount.'); return; }
+  var lockMsg=checkLocked(proj,date); if(lockMsg){ alert(lockMsg); return; }
 
   var groupId=uid(), now=new Date().toISOString();
   var base={ project:proj, adjustmentGroupId:groupId, adjustmentParty:party, isAdjustment:true, recorded_by:by, description:reason };
@@ -1089,6 +1126,7 @@ function deleteAdjustingGroup(groupId) {
   if (role==='auditor') { alert('Auditors cannot delete.'); return; }
   var legs=TXN.filter(function(t){ return t.adjustmentGroupId===groupId; });
   if (!legs.length) return;
+  var lockMsg=checkLocked(legs[0].project,legs[0].txn_date); if(lockMsg){ alert(lockMsg); return; }
   if (!confirm('Delete this adjusting entry — both the income and expense side? This cannot be undone.')) return;
   var by=currentUser?currentUser.name:'Unknown';
   var aEntry={ id:uid(), created_at:new Date().toISOString(), action:'delete',
@@ -1111,6 +1149,7 @@ function deleteAdjustingGroup(groupId) {
 function renderAll() {
   renderLedger(); renderAudit(); renderContribs(); renderPublic(); if(selectedAcct) renderPassbook();
   var ta=el('tab-adjusting'); if(ta&&ta.classList.contains('active')) renderAdjusting();
+  var tc=el('tab-close'); if(tc&&tc.classList.contains('active')) renderCloseBooks();
   var rt=el('tab-report'); if(rt&&rt.classList.contains('active')) {
     var rp=el('rsec-projects'), rc=el('rsec-category');
     if(rp&&rp.style.display!=='none') renderProjectReport();
@@ -1302,6 +1341,7 @@ function renderAudit(){
 function triggerDel(id){
   if(role==='auditor'){alert('Auditors cannot delete.');return;}
   var t=TXN.find(function(x){return x.id===id;}); if(!t) return;
+  var lockMsg=checkLocked(t.project,t.txn_date); if(lockMsg){ alert(lockMsg); return; }
   pendingDel=id;
   var adjWarn=t.isAdjustment?'<br><br><span style="font-size:12px;color:#b45309;font-weight:700">⚠️ This is one side of a paired Adjusting Entry. Deleting only this side will leave the offset unbalanced — delete both sides together from the Adjusting Entry tab instead.</span>':'';
   el('del-body').innerHTML='<strong>P'+fmt(t.amount)+' — '+t.category+' — '+t.account+'</strong><br><span style="font-size:12px;color:#888">'+(t.description||'')+'</span>'+adjWarn+'<br><br>This will be logged in the audit trail.';
@@ -1312,6 +1352,7 @@ function closeDelModal(){el('del-modal').classList.remove('open');pendingDel=nul
 function triggerEdit(id){
   if(role==='auditor'){alert('Auditors cannot edit.');return;}
   var t=TXN.find(function(x){return x.id===id;}); if(!t) return;
+  var lockMsg=checkLocked(t.project,t.txn_date); if(lockMsg){ alert(lockMsg); return; }
   pendingEdit=id; editTxnType=t.type;
   ['income','expense','transfer'].forEach(function(tp){el('edit-type-'+tp).classList.toggle('on',tp===t.type);});
   el('e-date').value=t.txn_date||'';
@@ -1359,8 +1400,9 @@ function doEdit(){
   if(!date||!amount||amount<=0){el('edit-err').textContent='Enter a valid date and amount.';return;}
   if(editTxnType==='transfer'&&acct===acct2){el('edit-err').textContent='From and To accounts must differ.';return;}
   var orig=TXN.find(function(x){return x.id===pendingEdit;});
-  var eProj=(editTxnType==='income'&&cat==='Fundraising Activity')||editTxnType==='expense'?(el('e-proj')&&el('e-proj').value.trim()||null):null;
+  var eProj=editTxnType!=='transfer'?(el('e-proj')&&el('e-proj').value.trim()||null):null;
   var eRefBy=editTxnType==='income'?(el('e-refby')&&el('e-refby').value.trim()||null):null;
+  var lockMsg=checkLocked(eProj,date); if(lockMsg){ el('edit-err').textContent=lockMsg; return; }
   var changes={txn_date:date,amount:amount,type:editTxnType,account:acct,
     account_to:editTxnType==='transfer'?acct2:null,category:cat,
     contributor:editTxnType==='income'?(from||null):null,project:eProj,ref_by:eRefBy,
@@ -1573,6 +1615,8 @@ function renderPayments(){
 
 function approvePayment(regId,name){
   if(!db) return;
+  var lockMsg=checkLocked('Homecoming',new Date().toISOString().split('T')[0]);
+  if(lockMsg){ alert('Cannot approve — '+lockMsg); return; }
   if(!confirm('Approve payment for '+name+'?')) return;
   db.collection('registrations').doc(regId).update({status:'paid',approvedAt:new Date().toISOString(),approvedBy:'Fund Manager'}).then(function(){
     var reg=null;
@@ -1609,6 +1653,8 @@ function approveGroupPayment(regId,name){
   if(!reg){alert('Group registration not found.');return;}
   var qty=reg.groupQty||0;
   var txnAmount=reg.totalFee||(qty*(reg.feePerPerson||0));
+  var lockMsg=checkLocked('Homecoming',new Date().toISOString().split('T')[0]);
+  if(lockMsg){ alert('Cannot approve — '+lockMsg); return; }
   if(!confirm('Approve group payment for '+name+' — '+qty+' slots, P'+fmt(txnAmount)+' total?')) return;
   var now=new Date().toISOString();
   var fbatch=db.batch();
@@ -2234,7 +2280,8 @@ function exportProjectExcel() {
 /* ── SETTINGS ── */
 function fillProjSel(selId) {
   var sel=el(selId); if(!sel) return;
-  sel.innerHTML='<option value="">— No Project —</option>'+CFG.projects.map(function(p){return'<option>'+p+'</option>';}).join('');
+  var open=CFG.projects.filter(function(p){return !CFG.closedProjects||CFG.closedProjects.indexOf(p)===-1;});
+  sel.innerHTML='<option value="">— No Project —</option>'+open.map(function(p){return'<option>'+p+'</option>';}).join('');
 }
 function updateAddProjectField() {
   // Any income or expense can belong to a project (e.g. Registration Fee income
@@ -2258,19 +2305,96 @@ function listenSettings() {
       if(data.expCats&&data.expCats.length) CFG.expCats=data.expCats;
       if(data.projects) CFG.projects=data.projects;
       if(data.projectTargets) CFG.projectTargets=data.projectTargets;
+      CFG.closedProjects=data.closedProjects||[];
+      CFG.closedPeriods=data.closedPeriods||[];
       // The Record Transaction category dropdown is populated once from CFG and never
       // refreshed on its own — without this, it stays stuck on whatever list was loaded
       // first (often the older hardcoded default) even after Settings saves a new one.
       if(txnType==='income'||txnType==='expense') fillCats(txnType);
+      var tc=el('tab-close'); if(tc&&tc.classList.contains('active')) renderCloseBooks();
     }
     renderSettings();
   },function(){renderSettings();});
 }
 function saveSettingsToFirestore() {
   if(!db) return;
-  db.collection('fund_config').doc('app').set({incCats:CFG.incCats,expCats:CFG.expCats,projects:CFG.projects,projectTargets:CFG.projectTargets})
+  db.collection('fund_config').doc('app').set({incCats:CFG.incCats,expCats:CFG.expCats,projects:CFG.projects,projectTargets:CFG.projectTargets,closedProjects:CFG.closedProjects,closedPeriods:CFG.closedPeriods})
     .catch(function(e){console.error('Settings save error:',e);});
 }
+/* ── CLOSE BOOKS (auditor locks a project or period against further changes) ── */
+function renderCloseBooks() {
+  var isAuditor=role==='auditor';
+  var allProjects=CFG.projects.slice();
+  TXN.forEach(function(t){ if(t.project&&allProjects.indexOf(t.project)===-1) allProjects.push(t.project); });
+  var pBody=el('close-projects-list');
+  if(pBody){
+    if(!allProjects.length){ pBody.innerHTML='<div class="tbl-empty">No projects yet.</div>'; }
+    else {
+      pBody.innerHTML=allProjects.map(function(name){
+        var closed=CFG.closedProjects&&CFG.closedProjects.indexOf(name)!==-1;
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee">'+
+          '<div><strong>'+name+'</strong> '+
+            (closed?'<span style="font-size:10px;padding:3px 8px;border-radius:20px;background:#fee2e2;color:#b91c1c;font-weight:700;margin-left:6px">🔒 CLOSED</span>'
+                   :'<span style="font-size:10px;padding:3px 8px;border-radius:20px;background:#dcfce7;color:#15803d;font-weight:700;margin-left:6px">OPEN</span>')+
+          '</div>'+
+          (isAuditor?'<button class="btn-export" style="background:'+(closed?'#2563eb':'#dc2626')+'" data-toggleproj="'+name.replace(/"/g,'&quot;')+'">'+(closed?'Reopen':'Close')+'</button>'
+                    :'<span class="lock-icon">auditor only</span>')+
+        '</div>';
+      }).join('');
+      pBody.onclick=function(e){ var t=e.target; while(t&&t!==pBody){ var name=t.getAttribute('data-toggleproj'); if(name){ toggleProjectClosed(name); return; } t=t.parentNode; } };
+    }
+  }
+  var months=[], seen={};
+  TXN.forEach(function(t){ if(t.txn_date){var m=t.txn_date.slice(0,7); if(!seen[m]){seen[m]=1;months.push(m);}} });
+  months.sort().reverse();
+  var mBody=el('close-periods-list');
+  if(mBody){
+    if(!months.length){ mBody.innerHTML='<div class="tbl-empty">No transactions yet.</div>'; }
+    else {
+      mBody.innerHTML=months.map(function(m){
+        var closed=CFG.closedPeriods&&CFG.closedPeriods.indexOf(m)!==-1;
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee">'+
+          '<div><strong>'+fmtMon(m)+'</strong> '+
+            (closed?'<span style="font-size:10px;padding:3px 8px;border-radius:20px;background:#fee2e2;color:#b91c1c;font-weight:700;margin-left:6px">🔒 CLOSED</span>'
+                   :'<span style="font-size:10px;padding:3px 8px;border-radius:20px;background:#dcfce7;color:#15803d;font-weight:700;margin-left:6px">OPEN</span>')+
+          '</div>'+
+          (isAuditor?'<button class="btn-export" style="background:'+(closed?'#2563eb':'#dc2626')+'" data-toggleperiod="'+m+'">'+(closed?'Reopen':'Close')+'</button>'
+                    :'<span class="lock-icon">auditor only</span>')+
+        '</div>';
+      }).join('');
+      mBody.onclick=function(e){ var t=e.target; while(t&&t!==mBody){ var m=t.getAttribute('data-toggleperiod'); if(m){ togglePeriodClosed(m); return; } t=t.parentNode; } };
+    }
+  }
+}
+function toggleProjectClosed(name) {
+  if(role!=='auditor'){ alert('Only the auditor can close or reopen a project.'); return; }
+  var closed=CFG.closedProjects.indexOf(name)!==-1;
+  if(!confirm((closed?'Reopen':'Close')+' project "'+name+'"?'+(closed?'':' No further transactions will be allowed against it until reopened.'))) return;
+  if(closed) CFG.closedProjects.splice(CFG.closedProjects.indexOf(name),1);
+  else CFG.closedProjects.push(name);
+  saveSettingsToFirestore();
+  var aEntry={id:uid(),created_at:new Date().toISOString(),action:closed?'reopen':'close',
+    detail:(closed?'Reopened':'Closed')+' project "'+name+'"'+(closed?'':' — locked, no further transactions allowed'),
+    done_by:currentUser?currentUser.name:'Auditor'};
+  if(db) db.collection('fund_audit').doc(aEntry.id).set(aEntry).catch(function(e){console.error('Audit log error:',e);});
+  else AUDIT.unshift(aEntry);
+  renderCloseBooks();
+}
+function togglePeriodClosed(period) {
+  if(role!=='auditor'){ alert('Only the auditor can close or reopen a period.'); return; }
+  var closed=CFG.closedPeriods.indexOf(period)!==-1;
+  if(!confirm((closed?'Reopen':'Close')+' the period '+fmtMon(period)+'?'+(closed?'':' No further transactions will be allowed in it until reopened.'))) return;
+  if(closed) CFG.closedPeriods.splice(CFG.closedPeriods.indexOf(period),1);
+  else CFG.closedPeriods.push(period);
+  saveSettingsToFirestore();
+  var aEntry={id:uid(),created_at:new Date().toISOString(),action:closed?'reopen':'close',
+    detail:(closed?'Reopened':'Closed')+' period '+fmtMon(period)+(closed?'':' — locked, no further transactions allowed'),
+    done_by:currentUser?currentUser.name:'Auditor'};
+  if(db) db.collection('fund_audit').doc(aEntry.id).set(aEntry).catch(function(e){console.error('Audit log error:',e);});
+  else AUDIT.unshift(aEntry);
+  renderCloseBooks();
+}
+
 function renderSettings() {
   fillCatFilter();
   var body=el('settings-body'); if(!body) return;
@@ -2555,7 +2679,7 @@ function selectProject(name) {
 
 /* ── TABS ── */
 function goTab(tab){
-  ['add','adjusting','ledger','accounts','contributors','audit','payments','report','settings'].forEach(function(t){
+  ['add','adjusting','ledger','accounts','contributors','audit','payments','report','close','settings'].forEach(function(t){
     var s=el('sec-'+t); if(s) s.style.display=t===tab?'block':'none';
     var b=el('tab-'+t); if(b) b.classList.toggle('active',t===tab);
   });
@@ -2568,6 +2692,7 @@ function goTab(tab){
   if(tab==='audit')        renderAudit();
   if(tab==='payments')     {if(!db) initFirebase(); renderPayments();}
   if(tab==='report')       renderReport();
+  if(tab==='close')        renderCloseBooks();
   if(tab==='settings')     renderSettings();
 }
 </script>
